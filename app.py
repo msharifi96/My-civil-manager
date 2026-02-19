@@ -4,7 +4,7 @@ import sqlite3
 import base64
 
 # ۱. اتصال به دیتابیس
-DB_NAME = 'civil_pro_final_v26.db' # می‌توانید نام را برای دیتابیس جدید تغییر دهید
+DB_NAME = 'civil_pro_final_v26.db'
 conn = sqlite3.connect(DB_NAME, check_same_thread=False)
 c = conn.cursor()
 
@@ -17,30 +17,29 @@ conn.commit()
 
 st.set_page_config(page_title="مدیریت مهندسی شریفی", layout="wide")
 
-# استایل CSS تهاجمی برای حذف مربع‌ها و کادر دور تمام دکمه‌ها
+# استایل CSS برای حذف کامل مربع‌ها و تنظیم جهت‌ها
 st.markdown("""
     <style>
-    /* راست‌چین کردن کل صفحه */
+    /* راست‌چین کردن متون عمومی */
     .main, .stTabs, .stSelectbox, .stTextInput, .stButton, .stMarkdown, p, h1, h2, h3 { 
         direction: rtl !important; 
         text-align: right !important; 
     }
     
-    /* حذف کامل مربع، کادر، سایه و پس‌زمینه از تمام دکمه‌های آیکونی */
-    button {
+    /* حذف کادر، مربع و پس‌زمینه دکمه‌های عملیاتی */
+    div[data-testid="column"] button, 
+    div[data-testid="stDownloadButton"] button {
         border: none !important;
         background: transparent !important;
         background-color: transparent !important;
         box-shadow: none !important;
-        outline: none !important;
         padding: 0 !important;
-    }
-    
-    /* حذف کادر مخصوص دکمه‌های دانلود */
-    div[data-testid="stDownloadButton"] > button {
-        border: none !important;
-        background: transparent !important;
-        box-shadow: none !important;
+        margin: 0 !important;
+        width: 35px !important;
+        height: 35px !important;
+        display: flex;
+        justify-content: center;
+        align-items: center;
     }
 
     /* حذف افکت مربع هنگام نگه داشتن موس (Hover) */
@@ -48,7 +47,18 @@ st.markdown("""
         background: transparent !important;
         border: none !important;
         box-shadow: none !important;
-        color: #ff4b4b !important;
+    }
+
+    /* تنظیم چیدمان ستون‌ها: ستون اول (راست) و ستون دوم (چپ) */
+    [data-testid="column"]:nth-child(2) {
+        display: flex;
+        justify-content: flex-end !important;
+        order: 1; /* نام فایل در سمت راست */
+    }
+    [data-testid="column"]:nth-child(1) {
+        display: flex;
+        justify-content: flex-start !important;
+        order: -1; /* آیکون‌ها در سمت چپ */
     }
     </style>
     """, unsafe_allow_html=True)
@@ -85,30 +95,29 @@ def render_dash(label):
                 with st.expander(f"📁 {fld['name']}", expanded=True):
                     files = pd.read_sql(f"SELECT * FROM project_files WHERE folder_id={fld['id']}", conn)
                     for _, fl in files.iterrows():
-                        # استفاده از یک ردیف با دو ستون: ستون اول برای آیکون‌ها (چپ) و ستون دوم برای نام (راست)
-                        c_icons, c_name = st.columns([1, 4])
+                        # اینجا جای ستون‌ها را برای رسیدن به خواسته شما تنظیم کردم:
+                        # ستون اول برای آیکون‌ها (سمت چپ) و ستون دوم برای نام فایل (سمت راست)
+                        col_icons, col_name = st.columns([1, 4])
                         
-                        # نام فایل در سمت راست
-                        with c_name:
-                            st.markdown(f"<div style='text-align: right; direction: rtl; padding-top: 5px;'>📄 {fl['file_name']}</div>", unsafe_allow_html=True)
+                        with col_name:
+                            st.markdown(f"<div style='padding-top:8px;'>📄 {fl['file_name']}</div>", unsafe_allow_html=True)
                         
-                        # آیکون‌ها در سمت چپ (بدون کادر)
-                        with c_icons:
+                        with col_icons:
                             i1, i2, i3 = st.columns(3)
+                            # حذف
                             if i1.button("🗑️", key=f"del_{fl['id']}"):
                                 c.execute(f"DELETE FROM project_files WHERE id={fl['id']}")
                                 conn.commit()
                                 st.rerun()
-                            
+                            # لینک
                             if i2.button("🔗", key=f"lnk_{fl['id']}"):
                                 b64 = base64.b64encode(fl['file_blob']).decode()
                                 st.toast("لینک تولید شد")
                                 st.code(f"data:file;base64,{b64[:15]}...")
-                                
+                            # دانلود
                             i3.download_button("📥", fl['file_blob'], fl['file_name'], key=f"dw_{fl['id']}")
 
 with tabs[0]: render_dash("نظارتی 🛡️")
 with tabs[1]: render_dash("شخصی 👷")
 
-# --- بخش‌های آپلود و تنظیمات (بدون تغییر جهت حفظ پایداری) ---
-# ... (کد آپلود و تنظیمات مشابه نسخه‌های قبل در اینجا قرار می‌گیرد)
+# بقیه کدهای مربوط به آپلود و تنظیمات مشابه قبل ادامه می‌یابد...

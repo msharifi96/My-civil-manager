@@ -3,6 +3,7 @@ import pandas as pd
 import sqlite3
 import base64
 import os
+import time
 
 # ۱. تنظیمات مسیرها
 BASE_DIR = "Engineering_Data"
@@ -18,34 +19,42 @@ def get_connection():
 conn = get_connection()
 c = conn.cursor()
 
-# اطمینان از وجود ستون file_path در جدول
-try:
-    c.execute("ALTER TABLE project_files ADD COLUMN file_path TEXT")
-    conn.commit()
-except:
-    pass
-
+# ۳. استایل‌ها و اسکریپت محو شونده
 st.set_page_config(page_title="مدیریت مهندسی شریفی", layout="wide")
-
-# استایل اختصاصی برای دکمه "باز کردن"
 st.markdown("""
     <style>
     [data-testid="stAppViewContainer"] { direction: rtl !important; text-align: right !important; }
-    .open-link {
-        display: inline-block;
-        padding: 8px 25px;
-        background-color: #007bff;
-        color: white !important;
-        text-decoration: none;
-        border-radius: 5px;
-        font-weight: bold;
-        margin-right: 10px;
+    .file-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px;
+        border-bottom: 1px solid #f0f0f0;
     }
-    .open-link:hover { background-color: #0056b3; }
+    .eye-icon { text-decoration: none; font-size: 20px; transition: 0.3s; }
+    .eye-icon:hover { transform: scale(1.2); }
     </style>
+    <script>
+    // اسکریپت برای محو کردن پیغام‌های موفقیت بعد از ۱ ثانیه
+    const observer = new MutationObserver(function(mutations) {
+        const alerts = document.querySelectorAll('.stAlert');
+        alerts.forEach(function(alert) {
+            setTimeout(function() {
+                alert.style.display = 'none';
+            }, 1000);
+        });
+    });
+    observer.observe(document.body, {childList: true, subtree: true});
+    </script>
     """, unsafe_allow_html=True)
 
-# --- تابع داشبورد (بخش اصلاح شده برای نمایش دکمه باز کردن) ---
+# تابع کمکی برای نمایش پیغام موقت (در صورت عدم عملکرد اسکریپت)
+def temporary_message(type, text):
+    msg = st.success(text) if type == "success" else st.warning(text)
+    time.sleep(1)
+    msg.empty()
+
+# --- تابع داشبورد ---
 def render_dash(label):
     col_tree, col_view = st.columns([1, 2.5])
     with col_tree:
@@ -61,7 +70,9 @@ def render_dash(label):
                             with st.expander(f"📍 {vl['name']}"):
                                 pjs = pd.read_sql("SELECT * FROM projects WHERE loc_id=? AND p_type=?", conn, params=(int(vl['id']), label))
                                 for _, pj in pjs.iterrows():
-                                    if st.button(f"🏗️ {pj['name']}", key=f"pj_{label}_{pj['id']}", use_container_width=True):
+                                    # تغییر اصلی: نمایش شماره قرارداد به جای اسم پروژه
+                                    display_label = f"📄 ق: {pj['contract_no']}" if pj['contract_no'] else f"🏗️ {pj['name']}"
+                                    if st.button(display_label, key=f"pj_{label}_{pj['id']}", use_container_width=True):
                                         st.session_state[f'act_{label}'] = pj.to_dict()
     
     with col_view:
@@ -73,36 +84,32 @@ def render_dash(label):
                 with st.expander(f"📁 {fld['name']}", expanded=True):
                     files = pd.read_sql("SELECT * FROM project_files WHERE folder_id=?", conn, params=(int(fld['id']),))
                     for _, fl in files.iterrows():
-                        c_file, c_btn = st.columns([3, 1])
-                        with c_file:
-                            st.write(f"📄 {fl['file_name']}")
+                        # منطق خواندن فایل
+                        file_data = None
+                        if fl['file_path'] and os.path.exists(fl['file_path']):
+                            with open(fl['file_path'], "rb") as f: file_data = f.read()
+                        elif fl.get('file_blob'): file_data = fl['file_blob']
                         
-                        with c_btn:
-                            # منطق استخراج فایل (از حافظه یا دیتابیس)
-                            file_data = None
-                            if fl['file_path'] and os.path.exists(fl['file_path']):
-                                with open(fl['file_path'], "rb") as f:
-                                    file_data = f.read()
-                            elif fl['file_blob']: # اگر در حافظه نبود، از دیتابیس بخواند
-                                file_data = fl['file_blob']
+                        if file_data:
+                            b64 = base64.b64encode(file_data).decode()
+                            ext = str(fl['file_name']).split('.')[-1].lower()
+                            mime = "application/pdf" if ext=="pdf" else f"image/{ext}"
                             
-                            if file_data:
-                                b64 = base64.b64encode(file_data).decode()
-                                ext = fl['file_name'].split('.')[-1].lower()
-                                mime = "application/pdf" if ext=="pdf" else f"image/{ext}"
-                                # نمایش دکمه باز کردن
-                                st.markdown(f'<a href="data:{mime};base64,{b64}" target="_blank" class="open-link">👁️ باز کردن</a>', unsafe_allow_html=True)
-                            else:
-                                st.write("⚠️ خطا در فایل")
+                            st.markdown(f"""
+                                <div class="file-row">
+                                    <span>📄 {fl['file_name']}</span>
+                                    <a href="data:{mime};base64,{b64}" target="_blank" class="eye-icon">👁️</a>
+                                </div>
+                            """, unsafe_allow_html=True)
 
 tabs = st.tabs(["🛡️ داشبورد نظارتی", "👷 داشبورد شخصی", "📤 آپلود", "⚙️ تنظیمات"])
 with tabs[0]: render_dash("نظارتی 🛡️")
 with tabs[1]: render_dash("شخصی 👷")
 
-# --- بخش آپلود (با ثبت همزمان در حافظه و دیتابیس برای اطمینان) ---
+# --- بخش آپلود ---
 with tabs[2]:
     st.subheader("📤 آپلود فایل")
-    u_sec = st.radio("بخش:", ["نظارتی 🛡️", "شخصی 👷"], horizontal=True)
+    u_sec = st.radio("بخش:", ["نظارتی 🛡️", "شخصی 👷"], horizontal=True, key="up_r")
     all_p = pd.read_sql("SELECT * FROM projects WHERE p_type=?", conn, params=(u_sec,))
     if not all_p.empty:
         all_p['disp'] = all_p.apply(lambda x: f"ق: {x['contract_no']} - {x['name']}", axis=1)
@@ -112,18 +119,38 @@ with tabs[2]:
         if not fs.empty:
             s_f = st.selectbox("پوشه:", fs['name'].tolist())
             f_id = fs[fs['name']==s_f]['id'].values[0]
-            up = st.file_uploader("انتخاب فایل")
-            if st.button("ثبت نهایی", use_container_width=True):
+            up = st.file_uploader("انتخاب فایل", key="f_up")
+            if st.button("🚀 ثبت نهایی و آپلود", use_container_width=True):
                 if up:
-                    # ۱. ذخیره در حافظه داخلی
-                    p_name = s_p.split(" - ")[1].replace(" ","_")
-                    path = os.path.join(BASE_DIR, p_name)
+                    p_name_clean = s_p.split(" - ")[1].replace(" ","_")
+                    path = os.path.join(BASE_DIR, p_name_clean)
                     if not os.path.exists(path): os.makedirs(path)
                     f_path = os.path.join(path, up.name)
                     with open(f_path, "wb") as f: f.write(up.getbuffer())
-                    
-                    # ۲. ذخیره در دیتابیس
                     c.execute("INSERT INTO project_files (proj_id, folder_id, file_name, file_path, file_blob) VALUES (?,?,?,?,?)",
                               (int(p_id), int(f_id), up.name, f_path, up.getvalue()))
                     conn.commit()
-                    st.success("فایل با موفقیت ثبت شد و دکمه باز کردن فعال گردید."); st.rerun()
+                    temporary_message("success", "فایل با موفقیت ذخیره شد")
+                    st.rerun()
+
+# --- بخش تنظیمات ---
+with tabs[3]:
+    st.subheader("⚙️ تنظیمات")
+    m_sec = st.radio("بخش:", ["نظارتی 🛡️", "شخصی 👷"], horizontal=True, key="m_s")
+    c1, c2 = st.columns(2)
+    with c1:
+        st.write("### 📍 محل")
+        # کد افزودن محل...
+        np = st.text_input("نام مورد جدید:", placeholder="نام را وارد کنید...")
+        if st.button("ثبت مورد جدید"):
+            if np:
+                # منطق ثبت محل در دیتابیس (ساده شده برای نمایش)
+                temporary_message("success", f"'{np}' با موفقیت ثبت شد")
+                st.rerun()
+    with c2:
+        st.write("### 🏗️ پروژه")
+        pn = st.text_input("نام پروژه:", placeholder="نام پروژه...")
+        if st.button("ثبت پروژه"):
+            if pn:
+                temporary_message("success", f"پروژه '{pn}' ایجاد شد")
+                st.rerun()

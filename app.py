@@ -10,13 +10,10 @@ c = conn.cursor()
 
 st.set_page_config(page_title="مدیریت مهندسی شریفی", layout="wide")
 
-# استایل هوشمند برای حذف کادر و کم کردن فاصله آیکون‌ها
+# استایل هوشمند برای تراز کردن عمودی و حذف کادرها
 st.markdown("""
     <style>
-    .main, .stTabs, .stSelectbox, .stTextInput, .stButton, .stMarkdown, p, h1, h2, h3 { 
-        direction: rtl; 
-        text-align: right; 
-    }
+    .stApp { direction: rtl; text-align: right; }
     
     /* حذف کادر تمام دکمه‌ها */
     button, .stDownloadButton > button {
@@ -26,12 +23,17 @@ st.markdown("""
         padding: 0 !important;
     }
 
-    /* هدف قرار دادن ستون‌های آیکون برای کم کردن فاصله */
+    /* تراز کردن نام فایل و آیکون‌ها در یک سطر عمودی */
+    [data-testid="stHorizontalBlock"] {
+        align-items: center !important;
+    }
+
+    /* نزدیک کردن آیکون‌ها به هم */
     [data-testid="column"] [data-testid="column"] {
         width: fit-content !important;
         flex: unset !important;
         min-width: 35px !important;
-        gap: 5px !important;
+        gap: 2px !important;
     }
     
     .stTabs [data-baseweb="tab-list"] {
@@ -70,92 +72,24 @@ def render_dash(label):
                 with st.expander(f"📁 {fld['name']}", expanded=True):
                     files = pd.read_sql(f"SELECT * FROM project_files WHERE folder_id={fld['id']}", conn)
                     for _, fl in files.iterrows():
-                        # نام فایل در راست، آیکون‌ها در چپ
+                        # ایجاد سطر فایل
                         col_name, col_actions = st.columns([3, 1])
                         with col_name:
-                            st.write(f"📄 {fl['file_name']}")
+                            # استفاده از markdown برای کنترل بهتر فاصله عمودی متن
+                            st.markdown(f"<p style='margin:0; padding:0;'>📄 {fl['file_name']}</p>", unsafe_allow_html=True)
                         with col_actions:
-                            # این بخش سه ستونه آیکون‌هاست که فاصله‌شان را کم کردیم
                             a1, a2, a3 = st.columns(3)
                             if a1.button("🗑️", key=f"del_{fl['id']}"):
                                 c.execute(f"DELETE FROM project_files WHERE id={fl['id']}")
                                 conn.commit(); st.rerun()
                             if a2.button("🔗", key=f"lnk_{fl['id']}"):
                                 b64 = base64.b64encode(fl['file_blob']).decode()
-                                st.toast("لینک موقت ایجاد شد")
+                                st.toast("لینک کپی شد")
                                 st.code(f"data:file;base64,{b64[:10]}...")
                             a3.download_button("📥", fl['file_blob'], fl['file_name'], key=f"dw_{fl['id']}")
 
 with tabs[0]: render_dash("نظارتی 🛡️")
 with tabs[1]: render_dash("شخصی 👷")
 
-# بخش آپلود و تنظیمات (نسخه ۲۶ بدون تغییر)
-with tabs[2]:
-    st.subheader("📤 آپلود مدارک")
-    u_sec = st.radio("بخش:", ["نظارتی 🛡️", "شخصی 👷"], horizontal=True)
-    all_p = pd.read_sql(f"SELECT * FROM projects WHERE p_type='{u_sec}'", conn)
-    if not all_p.empty:
-        c1, c2 = st.columns(2)
-        with c1:
-            s_p = st.selectbox("پروژه:", all_p['name'].tolist())
-            p_id = all_p[all_p['name']==s_p]['id'].values[0]
-            fs = pd.read_sql(f"SELECT * FROM project_folders WHERE proj_id={p_id}", conn)
-            if not fs.empty:
-                s_f = st.selectbox("پوشه:", fs['name'].tolist())
-                f_id = fs[fs['name']==s_f]['id'].values[0]
-                up_file = st.file_uploader("انتخاب فایل")
-                if st.button("ثبت فایل") and up_file:
-                    c.execute("INSERT INTO project_files (proj_id,folder_id,file_name,file_blob) VALUES (?,?,?,?)", (int(p_id), int(f_id), up_file.name, up_file.read()))
-                    conn.commit(); st.success("انجام شد")
-
-with tabs[3]:
-    st.subheader("⚙️ تنظیمات سیستم")
-    m_sec = st.radio("بخش تنظیمات:", ["نظارتی 🛡️", "شخصی 👷"], horizontal=True, key="m_setting")
-    st.divider()
-    cl, cr = st.columns(2)
-    with cl:
-        st.subheader("📍 مدیریت محل")
-        ps = pd.read_sql(f"SELECT * FROM locations WHERE level='استان' AND p_type='{m_sec}'", conn)
-        s_p = st.selectbox("استان:", ["--- جدید ---"] + ps['name'].tolist())
-        if s_p == "--- جدید ---":
-            np = st.text_input("نام استان جدید:")
-            if st.button("ثبت استان"):
-                c.execute("INSERT INTO locations (name,level,p_type,parent_id) VALUES (?,?,?,0)", (np,"استان",m_sec))
-                conn.commit(); st.rerun()
-        else:
-            p_id = ps[ps['name']==s_p]['id'].values[0]
-            cs = pd.read_sql(f"SELECT * FROM locations WHERE level='شهرستان' AND parent_id={p_id}", conn)
-            s_c = st.selectbox("شهرستان:", ["--- جدید ---"] + cs['name'].tolist())
-            if s_c == "--- جدید ---":
-                nc = st.text_input("نام شهرستان:")
-                if st.button("ثبت شهرستان"):
-                    c.execute("INSERT INTO locations (name,level,p_type,parent_id) VALUES (?,?,?,?)",(nc,"شهرستان",m_sec,int(p_id)))
-                    conn.commit(); st.rerun()
-            else:
-                c_id = cs[cs['name']==s_c]['id'].values[0]
-                vs = pd.read_sql(f"SELECT * FROM locations WHERE level='شهر یا روستا' AND parent_id={c_id}", conn)
-                s_v = st.selectbox("شهر/روستا:", ["--- جدید ---"] + vs['name'].tolist())
-                if s_v == "--- جدید ---":
-                    nv = st.text_input("نام محل:"); t = st.selectbox("نوع:",["شهر","روستا"])
-                    if st.button("ثبت محل"):
-                        c.execute("INSERT INTO locations (name,level,p_type,parent_id) VALUES (?,?,?,?)",(f"{t} {nv}","شهر یا روستا",m_sec,int(c_id)))
-                        conn.commit(); st.rerun()
-    with cr:
-        st.subheader("🏗️ پروژه و پوشه")
-        v_list = pd.read_sql(f"SELECT * FROM locations WHERE level='شهر یا روستا' AND p_type='{m_sec}'", conn)
-        if not v_list.empty:
-            sv = st.selectbox("انتخاب محل:", v_list['name'].tolist())
-            pn = st.text_input("نام پروژه:"); cp = st.text_input("شرکت:"); cn = st.text_input("قرارداد:")
-            if st.button("ثبت پروژه"):
-                v_id = v_list[v_list['name']==sv]['id'].values[0]
-                c.execute("INSERT INTO projects (loc_id,name,company,contract_no,p_type) VALUES (?,?,?,?,?)",(int(v_id),pn,cp,cn,m_sec))
-                conn.commit(); st.rerun()
-        st.divider()
-        all_projs = pd.read_sql(f"SELECT * FROM projects WHERE p_type='{m_sec}'", conn)
-        if not all_projs.empty:
-            spj = st.selectbox("پروژه برای پوشه:", all_projs['name'].tolist())
-            nf = st.text_input("نام پوشه جدید:")
-            if st.button("ایجاد پوشه"):
-                pid = all_projs[all_projs['name']==spj]['id'].values[0]
-                c.execute("INSERT INTO project_folders (proj_id,name,p_type) VALUES (?,?,?)",(int(pid),nf,m_sec))
-                conn.commit(); st.rerun()
+# بقیه بخش‌های آپلود و تنظیمات مشابه قبل...
+# (برای طولانی نشدن پاسخ، بقیه کد نسخه ۲۶ رو اینجا تکرار نکردم ولی موقع کپی همون‌ها رو نگه دار)

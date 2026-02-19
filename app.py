@@ -12,7 +12,7 @@ def get_connection():
 conn = get_connection()
 c = conn.cursor()
 
-# ایجاد جداول
+# ایجاد جداول پایه
 c.execute('CREATE TABLE IF NOT EXISTS locations (id INTEGER PRIMARY KEY, name TEXT, level TEXT, p_type TEXT, parent_id INTEGER)')
 c.execute('CREATE TABLE IF NOT EXISTS projects (id INTEGER PRIMARY KEY, loc_id INTEGER, name TEXT, company TEXT, contract_no TEXT, p_type TEXT)')
 c.execute('CREATE TABLE IF NOT EXISTS project_folders (id INTEGER PRIMARY KEY, proj_id INTEGER, name TEXT, p_type TEXT)')
@@ -21,7 +21,7 @@ conn.commit()
 
 st.set_page_config(page_title="مدیریت مهندسی شریفی", layout="wide")
 
-# ۲. استایل ویندوز ۱۱ و اصلاحات بصری
+# ۲. استایل ویندوز ۱۱ و تراز عمودی آیکون‌ها
 st.markdown("""
     <style>
     [data-testid="stAppViewContainer"], .main { 
@@ -29,14 +29,12 @@ st.markdown("""
         text-align: right; 
         font-family: 'Segoe UI', Tahoma, sans-serif;
     }
-    
     .stTabs [data-baseweb="tab-list"] {
         direction: rtl;
         display: flex;
         justify-content: flex-start !important;
         gap: 10px;
     }
-
     div[data-testid="column"] button {
         border: none !important;
         background: rgba(255, 255, 255, 0.1) !important;
@@ -45,17 +43,11 @@ st.markdown("""
         transition: all 0.2s ease;
         font-size: 1.1rem !important;
     }
-    
     div[data-testid="column"] button:hover {
         background: rgba(0, 120, 215, 0.1) !important;
-        transform: scale(1.02);
+        transform: scale(1.05);
     }
-
-    div[data-testid="column"] {
-        display: flex;
-        align-items: center; 
-    }
-    
+    div[data-testid="column"] { display: flex; align-items: center; }
     [data-testid="column"] { gap: 5px !important; }
     </style>
     """, unsafe_allow_html=True)
@@ -78,36 +70,33 @@ def render_dash(label):
                             with st.expander(f"📍 {vl['name']}"):
                                 pjs = pd.read_sql("SELECT * FROM projects WHERE loc_id=? AND p_type=?", conn, params=(int(vl['id']), label))
                                 for _, pj in pjs.iterrows():
-                                    # نمایش شماره قرارداد در داشبورد طبق درخواست شما
-                                    btn_label = f"📄 ق: {pj['contract_no']}" if pj['contract_no'] else f"🏗️ {pj['name']}"
-                                    if st.button(btn_label, key=f"pj_{label}_{pj['id']}", use_container_width=True):
+                                    btn_txt = f"📄 ق: {pj['contract_no']}" if pj['contract_no'] else f"🏗️ {pj['name']}"
+                                    if st.button(btn_txt, key=f"pj_{label}_{pj['id']}", use_container_width=True):
                                         st.session_state[f'act_{label}'] = pj.to_dict()
-
     with col_view:
         if f'act_{label}' in st.session_state:
             pj = st.session_state[f'act_{label}']
             st.header(f"🏗️ {pj['name']}")
-            st.info(f"🏢 پیمانکار: {pj['company']} | 📄 شماره قرارداد: {pj['contract_no']}")
+            st.info(f"🏢 شرکت: {pj['company']} | 📄 قرارداد: {pj['contract_no']}")
             flds = pd.read_sql("SELECT * FROM project_folders WHERE proj_id=?", conn, params=(int(pj['id']),))
             for _, fld in flds.iterrows():
                 with st.expander(f"📁 {fld['name']}", expanded=True):
                     files = pd.read_sql("SELECT * FROM project_files WHERE folder_id=?", conn, params=(int(fld['id']),))
                     for _, fl in files.iterrows():
                         c_name, c_btns = st.columns([4, 1.5])
-                        with c_name:
-                            st.write(f"📄 {fl['file_name']}")
+                        with c_name: st.write(f"📄 {fl['file_name']}")
                         with c_btns:
                             a1, a2, a3 = st.columns([1, 1, 1])
-                            if a1.button("🗑️", key=f"del_{fl['id']}", help="حذف"):
+                            if a1.button("🗑️", key=f"del_{fl['id']}"):
                                 c.execute("DELETE FROM project_files WHERE id=?", (int(fl['id']),)); conn.commit(); st.rerun()
-                            if a2.button("🔗", key=f"lnk_{fl['id']}", help="کپی لینک"):
+                            if a2.button("🔗", key=f"lnk_{fl['id']}"):
                                 st.toast("لینک کپی شد"); st.code(f"data:file;base64,{base64.b64encode(fl['file_blob']).decode()[:10]}...")
-                            a3.download_button("💾", fl['file_blob'], fl['file_name'], key=f"dw_{fl['id']}", help="ذخیره")
+                            a3.download_button("💾", fl['file_blob'], fl['file_name'], key=f"dw_{fl['id']}")
 
 with tabs[0]: render_dash("نظارتی 🛡️")
 with tabs[1]: render_dash("شخصی 👷")
 
-# --- آپلود فایل (اصلاح شده) ---
+# --- آپلود فایل ---
 with tabs[2]:
     st.subheader("📤 آپلود مدارک")
     u_sec = st.radio("بخش:", ["نظارتی 🛡️", "شخصی 👷"], horizontal=True, key="up_sec_main")
@@ -124,7 +113,7 @@ with tabs[2]:
                 up_file = st.file_uploader("انتخاب فایل")
                 if st.button("ثبت فایل") and up_file:
                     c.execute("INSERT INTO project_files (proj_id,folder_id,file_name,file_blob) VALUES (?,?,?,?)", (int(p_id), int(f_id), up_file.name, up_file.read()))
-                    conn.commit(); st.success("فایل با موفقیت ثبت شد")
+                    conn.commit(); st.success("انجام شد")
 
 # --- تنظیمات سیستم ---
 with tabs[3]:
@@ -158,4 +147,18 @@ with tabs[3]:
                         c.execute("INSERT INTO locations (name,level,p_type,parent_id) VALUES (?,?,?,?)",(f"{t} {nv}","شهر یا روستا",m_sec,int(c_id))); conn.commit(); st.rerun()
     with cr:
         st.subheader("🏗️ مدیریت پروژه")
-        v_list = pd.read_sql("SELECT * FROM locations WHERE level='شهر یا روستا' AND p_type=?", conn
+        v_list = pd.read_sql("SELECT * FROM locations WHERE level='شهر یا روستا' AND p_type=?", conn, params=(m_sec,))
+        if not v_list.empty:
+            sv = st.selectbox("انتخاب محل:", v_list['name'].tolist(), key="set_pj_loc")
+            pn = st.text_input("نام پروژه:"); cp = st.text_input("شرکت:"); cn = st.text_input("شماره قرارداد:")
+            if st.button("ثبت پروژه"):
+                v_id = v_list[v_list['name']==sv]['id'].values[0]
+                c.execute("INSERT INTO projects (loc_id,name,company,contract_no,p_type) VALUES (?,?,?,?,?)",(int(v_id),pn,cp,cn,m_sec)); conn.commit(); st.rerun()
+        st.divider()
+        all_p_list = pd.read_sql("SELECT * FROM projects WHERE p_type=?", conn, params=(m_sec,))
+        if not all_p_list.empty:
+            spj = st.selectbox("پروژه برای پوشه:", all_p_list['name'].tolist(), key="set_fld_pj")
+            nf = st.text_input("نام پوشه جدید:")
+            if st.button("ایجاد پوشه"):
+                pid = all_p_list[all_p_list['name']==spj]['id'].values[0]
+                c.execute("INSERT INTO project_folders (proj_id,name,p_type) VALUES (?,?,?)",(int(pid),nf,m_sec)); conn.commit(); st.rerun()

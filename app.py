@@ -8,29 +8,32 @@ DB_NAME = 'civil_pro_final_v26.db'
 conn = sqlite3.connect(DB_NAME, check_same_thread=False)
 c = conn.cursor()
 
-# ایجاد جداول
-c.execute('CREATE TABLE IF NOT EXISTS locations (id INTEGER PRIMARY KEY, name TEXT, level TEXT, p_type TEXT, parent_id INTEGER)')
-c.execute('CREATE TABLE IF NOT EXISTS projects (id INTEGER PRIMARY KEY, loc_id INTEGER, name TEXT, company TEXT, contract_no TEXT, p_type TEXT)')
-c.execute('CREATE TABLE IF NOT EXISTS project_folders (id INTEGER PRIMARY KEY, proj_id INTEGER, name TEXT, p_type TEXT)')
-c.execute('CREATE TABLE IF NOT EXISTS project_files (id INTEGER PRIMARY KEY, proj_id INTEGER, folder_id INTEGER, file_name TEXT, file_blob BLOB)')
-conn.commit()
-
 st.set_page_config(page_title="مدیریت مهندسی شریفی", layout="wide")
 
-# استایل نسخه ۲۶ + حذف امن کادر دکمه‌های آیکونی
+# استایل هوشمند برای حذف کادر و کم کردن فاصله آیکون‌ها
 st.markdown("""
     <style>
     .main, .stTabs, .stSelectbox, .stTextInput, .stButton, .stMarkdown, p, h1, h2, h3 { 
         direction: rtl; 
         text-align: right; 
     }
-    /* حذف کادر دور تمام دکمه‌ها برای اینکه آیکون‌ها بدون مربع دیده شوند */
-    button {
+    
+    /* حذف کادر تمام دکمه‌ها */
+    button, .stDownloadButton > button {
         border: none !important;
         background: transparent !important;
         box-shadow: none !important;
+        padding: 0 !important;
     }
-    /* جلوگیری از به هم ریختن تب‌ها */
+
+    /* هدف قرار دادن ستون‌های آیکون برای کم کردن فاصله */
+    [data-testid="column"] [data-testid="column"] {
+        width: fit-content !important;
+        flex: unset !important;
+        min-width: 35px !important;
+        gap: 5px !important;
+    }
+    
     .stTabs [data-baseweb="tab-list"] {
         direction: rtl;
     }
@@ -67,10 +70,12 @@ def render_dash(label):
                 with st.expander(f"📁 {fld['name']}", expanded=True):
                     files = pd.read_sql(f"SELECT * FROM project_files WHERE folder_id={fld['id']}", conn)
                     for _, fl in files.iterrows():
+                        # نام فایل در راست، آیکون‌ها در چپ
                         col_name, col_actions = st.columns([3, 1])
                         with col_name:
                             st.write(f"📄 {fl['file_name']}")
                         with col_actions:
+                            # این بخش سه ستونه آیکون‌هاست که فاصله‌شان را کم کردیم
                             a1, a2, a3 = st.columns(3)
                             if a1.button("🗑️", key=f"del_{fl['id']}"):
                                 c.execute(f"DELETE FROM project_files WHERE id={fl['id']}")
@@ -84,6 +89,7 @@ def render_dash(label):
 with tabs[0]: render_dash("نظارتی 🛡️")
 with tabs[1]: render_dash("شخصی 👷")
 
+# بخش آپلود و تنظیمات (نسخه ۲۶ بدون تغییر)
 with tabs[2]:
     st.subheader("📤 آپلود مدارک")
     u_sec = st.radio("بخش:", ["نظارتی 🛡️", "شخصی 👷"], horizontal=True)

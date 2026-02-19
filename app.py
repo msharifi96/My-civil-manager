@@ -21,7 +21,7 @@ conn.commit()
 
 st.set_page_config(page_title="مدیریت مهندسی شریفی", layout="wide")
 
-# ۲. استایل ویندوز ۱۱ و تراز عمودی آیکون‌ها
+# ۲. استایل ویندوز ۱۱
 st.markdown("""
     <style>
     [data-testid="stAppViewContainer"], .main { 
@@ -36,19 +36,10 @@ st.markdown("""
         gap: 10px;
     }
     div[data-testid="column"] button {
-        border: none !important;
-        background: rgba(255, 255, 255, 0.1) !important;
         border-radius: 6px !important;
-        padding: 5px 10px !important;
         transition: all 0.2s ease;
-        font-size: 1.1rem !important;
-    }
-    div[data-testid="column"] button:hover {
-        background: rgba(0, 120, 215, 0.1) !important;
-        transform: scale(1.05);
     }
     div[data-testid="column"] { display: flex; align-items: center; }
-    [data-testid="column"] { gap: 5px !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -102,10 +93,11 @@ with tabs[2]:
     u_sec = st.radio("بخش:", ["نظارتی 🛡️", "شخصی 👷"], horizontal=True, key="up_sec_main")
     all_p = pd.read_sql("SELECT * FROM projects WHERE p_type=?", conn, params=(u_sec,))
     if not all_p.empty:
+        all_p['display_name'] = all_p.apply(lambda x: f"ق: {x['contract_no']} ({x['name']})", axis=1)
         c1, c2 = st.columns(2)
         with c1:
-            s_p = st.selectbox("پروژه:", all_p['name'].tolist())
-            p_id = all_p[all_p['name']==s_p]['id'].values[0]
+            s_p_display = st.selectbox("پروژه:", all_p['display_name'].tolist())
+            p_id = all_p[all_p['display_name']==s_p_display]['id'].values[0]
             fs = pd.read_sql("SELECT * FROM project_folders WHERE proj_id=?", conn, params=(int(p_id),))
             if not fs.empty:
                 s_f = st.selectbox("پوشه:", fs['name'].tolist())
@@ -115,50 +107,88 @@ with tabs[2]:
                     c.execute("INSERT INTO project_files (proj_id,folder_id,file_name,file_blob) VALUES (?,?,?,?)", (int(p_id), int(f_id), up_file.name, up_file.read()))
                     conn.commit(); st.success("انجام شد")
 
-# --- تنظیمات سیستم ---
+# --- تنظیمات سیستم (با قابلیت ویرایش) ---
 with tabs[3]:
     st.subheader("⚙️ تنظیمات سیستم")
     m_sec = st.radio("بخش تنظیمات:", ["نظارتی 🛡️", "شخصی 👷"], horizontal=True, key="m_setting")
     st.divider()
+    
     cl, cr = st.columns(2)
+    
+    # مدیریت محل پروژه
     with cl:
         st.subheader("📍 مدیریت محل پروژه")
+        mode_loc = st.radio("عملیات محل:", ["افزودن جدید", "ویرایش نام موجود"], horizontal=True)
+        
         ps = pd.read_sql("SELECT * FROM locations WHERE level='استان' AND p_type=?", conn, params=(m_sec,))
-        s_p = st.selectbox("استان:", ["--- جدید ---"] + ps['name'].tolist(), key="set_p")
-        if s_p == "--- جدید ---":
-            np = st.text_input("نام استان جدید:"); 
-            if st.button("ثبت استان"):
-                c.execute("INSERT INTO locations (name,level,p_type,parent_id) VALUES (?,?,?,0)", (np,"استان",m_sec)); conn.commit(); st.rerun()
-        else:
-            p_id = ps[ps['name']==s_p]['id'].values[0]
-            cs = pd.read_sql("SELECT * FROM locations WHERE level='شهرستان' AND parent_id=?", conn, params=(int(p_id),))
-            s_c = st.selectbox("شهرستان:", ["--- جدید ---"] + cs['name'].tolist(), key="set_c")
-            if s_c == "--- جدید ---":
-                nc = st.text_input("نام شهرستان:"); 
-                if st.button("ثبت شهرستان"):
-                    c.execute("INSERT INTO locations (name,level,p_type,parent_id) VALUES (?,?,?,?)",(nc,"شهرستان",m_sec,int(p_id))); conn.commit(); st.rerun()
+        
+        if mode_loc == "افزودن جدید":
+            s_p = st.selectbox("استان:", ["--- جدید ---"] + ps['name'].tolist(), key="add_p")
+            if s_p == "--- جدید ---":
+                np = st.text_input("نام استان جدید:")
+                if st.button("ثبت استان"):
+                    c.execute("INSERT INTO locations (name,level,p_type,parent_id) VALUES (?,?,?,0)", (np,"استان",m_sec)); conn.commit(); st.rerun()
             else:
-                c_id = cs[cs['name']==s_c]['id'].values[0]
-                vs = pd.read_sql("SELECT * FROM locations WHERE level='شهر یا روستا' AND parent_id=?", conn, params=(int(c_id),))
-                s_v = st.selectbox("شهر/روستا:", ["--- جدید ---"] + vs['name'].tolist(), key="set_v")
-                if s_v == "--- جدید ---":
-                    nv = st.text_input("نام محل:"); t = st.selectbox("نوع:",["شهر","روستا"])
-                    if st.button("ثبت محل"):
-                        c.execute("INSERT INTO locations (name,level,p_type,parent_id) VALUES (?,?,?,?)",(f"{t} {nv}","شهر یا روستا",m_sec,int(c_id))); conn.commit(); st.rerun()
+                p_id = ps[ps['name']==s_p]['id'].values[0]
+                cs = pd.read_sql("SELECT * FROM locations WHERE level='شهرستان' AND parent_id=?", conn, params=(int(p_id),))
+                s_c = st.selectbox("شهرستان:", ["--- جدید ---"] + cs['name'].tolist(), key="add_c")
+                if s_c == "--- جدید ---":
+                    nc = st.text_input("نام شهرستان:")
+                    if st.button("ثبت شهرستان"):
+                        c.execute("INSERT INTO locations (name,level,p_type,parent_id) VALUES (?,?,?,?)",(nc,"شهرستان",m_sec,int(p_id))); conn.commit(); st.rerun()
+                else:
+                    c_id = cs[cs['name']==s_c]['id'].values[0]
+                    vs = pd.read_sql("SELECT * FROM locations WHERE level='شهر یا روستا' AND parent_id=?", conn, params=(int(c_id),))
+                    s_v = st.selectbox("شهر/روستا:", ["--- جدید ---"] + vs['name'].tolist(), key="add_v")
+                    if s_v == "--- جدید ---":
+                        nv = st.text_input("نام محل:"); t = st.selectbox("نوع:",["شهر","روستا"])
+                        if st.button("ثبت محل"):
+                            c.execute("INSERT INTO locations (name,level,p_type,parent_id) VALUES (?,?,?,?)",(f"{t} {nv}","شهر یا روستا",m_sec,int(c_id))); conn.commit(); st.rerun()
+        
+        else: # حالت ویرایش محل
+            all_locs = pd.read_sql("SELECT * FROM locations WHERE p_type=?", conn, params=(m_sec,))
+            if not all_locs.empty:
+                target_loc = st.selectbox("انتخاب مورد برای ویرایش:", all_locs['name'].tolist())
+                new_loc_name = st.text_input("نام جدید:", value=target_loc)
+                if st.button("اعمال تغییر نام محل"):
+                    c.execute("UPDATE locations SET name=? WHERE name=? AND p_type=?", (new_loc_name, target_loc, m_sec))
+                    conn.commit(); st.success("نام محل ویرایش شد"); st.rerun()
+
+    # مدیریت پروژه و پوشه
     with cr:
         st.subheader("🏗️ مدیریت پروژه")
-        v_list = pd.read_sql("SELECT * FROM locations WHERE level='شهر یا روستا' AND p_type=?", conn, params=(m_sec,))
-        if not v_list.empty:
-            sv = st.selectbox("انتخاب محل:", v_list['name'].tolist(), key="set_pj_loc")
-            pn = st.text_input("نام پروژه:"); cp = st.text_input("شرکت:"); cn = st.text_input("شماره قرارداد:")
-            if st.button("ثبت پروژه"):
-                v_id = v_list[v_list['name']==sv]['id'].values[0]
-                c.execute("INSERT INTO projects (loc_id,name,company,contract_no,p_type) VALUES (?,?,?,?,?)",(int(v_id),pn,cp,cn,m_sec)); conn.commit(); st.rerun()
-        st.divider()
-        all_p_list = pd.read_sql("SELECT * FROM projects WHERE p_type=?", conn, params=(m_sec,))
-        if not all_p_list.empty:
-            spj = st.selectbox("پروژه برای پوشه:", all_p_list['name'].tolist(), key="set_fld_pj")
-            nf = st.text_input("نام پوشه جدید:")
-            if st.button("ایجاد پوشه"):
-                pid = all_p_list[all_p_list['name']==spj]['id'].values[0]
-                c.execute("INSERT INTO project_folders (proj_id,name,p_type) VALUES (?,?,?)",(int(pid),nf,m_sec)); conn.commit(); st.rerun()
+        mode_proj = st.radio("عملیات پروژه:", ["افزودن/پوشه", "ویرایش اطلاعات پروژه"], horizontal=True)
+        
+        if mode_proj == "افزودن/پوشه":
+            v_list = pd.read_sql("SELECT * FROM locations WHERE level='شهر یا روستا' AND p_type=?", conn, params=(m_sec,))
+            if not v_list.empty:
+                sv = st.selectbox("انتخاب محل پروژه:", v_list['name'].tolist(), key="set_pj_loc")
+                pn = st.text_input("نام پروژه:"); cp = st.text_input("شرکت:"); cn = st.text_input("شماره قرارداد:")
+                if st.button("ثبت پروژه جدید"):
+                    v_id = v_list[v_list['name']==sv]['id'].values[0]
+                    c.execute("INSERT INTO projects (loc_id,name,company,contract_no,p_type) VALUES (?,?,?,?,?)",(int(v_id),pn,cp,cn,m_sec)); conn.commit(); st.rerun()
+            
+            st.divider()
+            all_p_list = pd.read_sql("SELECT * FROM projects WHERE p_type=?", conn, params=(m_sec,))
+            if not all_p_list.empty:
+                all_p_list['display_name'] = all_p_list.apply(lambda x: f"ق: {x['contract_no']} ({x['name']})", axis=1)
+                spj_display = st.selectbox("پروژه برای ایجاد پوشه:", all_p_list['display_name'].tolist(), key="set_fld_pj")
+                nf = st.text_input("نام پوشه جدید:")
+                if st.button("ایجاد پوشه"):
+                    pid = all_p_list[all_p_list['display_name']==spj_display]['id'].values[0]
+                    c.execute("INSERT INTO project_folders (proj_id,name,p_type) VALUES (?,?,?)",(int(pid),nf,m_sec)); conn.commit(); st.rerun()
+        
+        else: # حالت ویرایش اطلاعات پروژه
+            all_projs = pd.read_sql("SELECT * FROM projects WHERE p_type=?", conn, params=(m_sec,))
+            if not all_projs.empty:
+                edit_p = st.selectbox("انتخاب پروژه جهت ویرایش:", all_projs['name'].tolist())
+                p_data = all_projs[all_projs['name']==edit_p].iloc[0]
+                
+                new_pn = st.text_input("اصلاح نام پروژه:", value=p_data['name'])
+                new_cp = st.text_input("اصلاح شرکت:", value=p_data['company'])
+                new_cn = st.text_input("اصلاح شماره قرارداد:", value=p_data['contract_no'])
+                
+                if st.button("بروزرسانی اطلاعات پروژه"):
+                    c.execute("UPDATE projects SET name=?, company=?, contract_no=? WHERE id=?", 
+                              (new_pn, new_cp, new_cn, int(p_data['id'])))
+                    conn.commit(); st.success("اطلاعات پروژه بروز شد"); st.rerun()

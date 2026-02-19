@@ -158,4 +158,53 @@ with tabs[3]:
             all_p_list['display_name'] = all_p_list.apply(lambda x: f"قرارداد: {x['contract_no']} - پروژه: {x['name']}", axis=1)
 
         if mode_proj == "افزودن پروژه":
+            st.write("### ➕ ثبت پروژه جدید")
             v_list = pd.read_sql("SELECT * FROM locations WHERE level='شهر یا روستا' AND p_type=?", conn, params=(m_sec,))
+            if not v_list.empty:
+                sv = st.selectbox("انتخاب محل پروژه:", v_list['name'].tolist(), key="set_pj_loc")
+                pn = st.text_input("نام پروژه:"); cp = st.text_input("شرکت:"); cn = st.text_input("شماره قرارداد:")
+                if st.button("ثبت پروژه جدید"):
+                    v_id = v_list[v_list['name']==sv]['id'].values[0]
+                    c.execute("INSERT INTO projects (loc_id,name,company,contract_no,p_type) VALUES (?,?,?,?,?)",(int(v_id),pn,cp,cn,m_sec)); conn.commit(); st.rerun()
+            else:
+                st.warning("ابتدا یک 'شهر یا روستا' در بخش مدیریت محل ثبت کنید.")
+                
+            st.divider()
+            if not all_p_list.empty:
+                st.write("### 📁 ایجاد پوشه برای پروژه")
+                spj_display = st.selectbox("انتخاب قرارداد و پروژه:", all_p_list['display_name'].tolist(), key="set_fld_pj")
+                nf = st.text_input("نام پوشه جدید:")
+                if st.button("ایجاد پوشه"):
+                    pid = all_p_list[all_p_list['display_name']==spj_display]['id'].values[0]
+                    c.execute("INSERT INTO project_folders (proj_id,name,p_type) VALUES (?,?,?)",(int(pid),nf,m_sec)); conn.commit(); st.rerun()
+        
+        else: # حالت ویرایش پروژه (یکپارچه)
+            if not all_p_list.empty:
+                edit_p = st.selectbox("انتخاب پروژه جهت ویرایش:", all_p_list['display_name'].tolist())
+                p_id = all_p_list[all_p_list['display_name']==edit_p]['id'].values[0]
+                p_data = all_p_list[all_p_list['id']==p_id].iloc[0]
+                
+                with st.expander("🛠️ ویرایش مشخصات اصلی", expanded=True):
+                    v_list = pd.read_sql("SELECT * FROM locations WHERE level='شهر یا روستا' AND p_type=?", conn, params=(m_sec,))
+                    current_loc = v_list[v_list['id']==p_data['loc_id']]['name'].values[0] if p_data['loc_id'] in v_list['id'].values else v_list['name'].tolist()[0]
+                    new_loc = st.selectbox("اصلاح محل پروژه:", v_list['name'].tolist(), index=v_list['name'].tolist().index(current_loc))
+                    new_pn = st.text_input("اصلاح نام پروژه:", value=p_data['name'])
+                    new_cp = st.text_input("اصلاح شرکت:", value=p_data['company'])
+                    new_cn = st.text_input("اصلاح شماره قرارداد:", value=p_data['contract_no'])
+                    if st.button("بروزرسانی مشخصات اصلی"):
+                        new_vid = v_list[v_list['name']==new_loc]['id'].values[0]
+                        c.execute("UPDATE projects SET loc_id=?, name=?, company=?, contract_no=? WHERE id=?", 
+                                  (int(new_vid), new_pn, new_cp, new_cn, int(p_id)))
+                        conn.commit(); st.success("اطلاعات بروز شد"); st.rerun()
+
+                with st.expander("📁 ویرایش نام پوشه‌ها"):
+                    flds = pd.read_sql("SELECT * FROM project_folders WHERE proj_id=?", conn, params=(int(p_id),))
+                    if not flds.empty:
+                        target_fld = st.selectbox("انتخاب پوشه:", flds['name'].tolist())
+                        fld_id = flds[flds['name']==target_fld]['id'].values[0]
+                        new_fld_name = st.text_input("نام جدید پوشه:", value=target_fld)
+                        if st.button("بروزرسانی نام پوشه"):
+                            c.execute("UPDATE project_folders SET name=? WHERE id=?", (new_fld_name, int(fld_id)))
+                            conn.commit(); st.success("نام پوشه تغییر یافت"); st.rerun()
+                    else:
+                        st.info("این پروژه پوشه‌ای ندارد.")

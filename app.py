@@ -3,7 +3,7 @@ import pandas as pd
 import sqlite3
 import base64
 
-# ۱. اتصال به دیتابیس (ماندگاری دائمی داده‌ها)
+# ۱. اتصال به دیتابیس
 @st.cache_resource
 def get_connection():
     conn = sqlite3.connect('civil_pro_final_v26.db', check_same_thread=False)
@@ -12,7 +12,7 @@ def get_connection():
 conn = get_connection()
 c = conn.cursor()
 
-# ایجاد جداول پایه در صورت عدم وجود
+# ایجاد جداول
 c.execute('CREATE TABLE IF NOT EXISTS locations (id INTEGER PRIMARY KEY, name TEXT, level TEXT, p_type TEXT, parent_id INTEGER)')
 c.execute('CREATE TABLE IF NOT EXISTS projects (id INTEGER PRIMARY KEY, loc_id INTEGER, name TEXT, company TEXT, contract_no TEXT, p_type TEXT)')
 c.execute('CREATE TABLE IF NOT EXISTS project_folders (id INTEGER PRIMARY KEY, proj_id INTEGER, name TEXT, p_type TEXT)')
@@ -21,48 +21,46 @@ conn.commit()
 
 st.set_page_config(page_title="مدیریت مهندسی شریفی", layout="wide")
 
-# ۲. استایل اختصاصی (راست‌چین تب‌ها و تراز دقیق آیکون‌ها در مرکز سطر)
+# ۲. استایل ویندوز ۱۱ و اصلاحات جدید
 st.markdown("""
     <style>
-    /* راست‌چین کردن کل صفحه و متون */
-    [data-testid="stAppViewContainer"], .main, .stMarkdown, p, h1, h2, h3 { 
+    /* راست‌چین کردن و فونت */
+    [data-testid="stAppViewContainer"], .main { 
         direction: rtl; 
         text-align: right; 
+        font-family: 'Segoe UI', Tahoma, sans-serif;
     }
     
-    /* راست‌چین کردن تب‌ها */
+    /* استایل تب‌ها به سبک مدرن */
     .stTabs [data-baseweb="tab-list"] {
         direction: rtl;
         display: flex;
         justify-content: flex-start !important;
+        gap: 10px;
     }
 
-    /* تراز کردن نام فایل و آیکون‌ها در یک سطر و وسط‌چین عمودی دقیق */
-    .file-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        direction: rtl;
-        padding: 5px 0;
-    }
-
-    /* استایل دکمه‌های آیکونی فشرده و بدون حاشیه */
+    /* شبیه‌سازی دکمه‌های عملیاتی ویندوز ۱۱ */
     div[data-testid="column"] button {
         border: none !important;
-        background: transparent !important;
-        padding: 0 8px !important;
-        font-size: 1.3rem !important;
-        box-shadow: none !important;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+        background: rgba(255, 255, 255, 0.1) !important;
+        border-radius: 6px !important;
+        padding: 5px 10px !important;
+        transition: all 0.2s ease;
+        font-size: 1.4rem !important;
     }
     
-    /* حذف فاصله اضافی بین ستون‌ها برای چسبیدن آیکون‌ها */
-    [data-testid="column"] { gap: 0px !important; }
+    div[data-testid="column"] button:hover {
+        background: rgba(0, 120, 215, 0.1) !important; /* آبی ویندوزی ملایم */
+        transform: scale(1.1);
+    }
+
+    /* تراز عمودی سطر فایل‌ها */
+    div[data-testid="column"] {
+        display: flex;
+        align-items: center; 
+    }
     
-    /* فونت فارسی استاندارد */
-    * { font-family: 'Tahoma', sans-serif; }
+    [data-testid="column"] { gap: 5px !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -97,26 +95,23 @@ def render_dash(label):
                 with st.expander(f"📁 {fld['name']}", expanded=True):
                     files = pd.read_sql("SELECT * FROM project_files WHERE folder_id=?", conn, params=(int(fld['id']),))
                     for _, fl in files.iterrows():
-                        # ایجاد سطر هماهنگ برای نام فایل و دکمه‌ها
-                        c_name, c_btns = st.columns([3.5, 1.5])
+                        c_name, c_btns = st.columns([4, 1.5])
                         with c_name:
-                            # متن فایل دقیقاً در مرکز عمودی ستون
-                            st.markdown(f"<div style='display:flex; align-items:center; height:45px;'>📄 {fl['file_name']}</div>", unsafe_allow_html=True)
+                            st.write(f"📄 {fl['file_name']}")
                         with c_btns:
-                            # دکمه‌ها در یک ردیف و تراز شده در مرکز
+                            # آیکون‌های ویندوز ۱۱ (استفاده از Fluent Style)
                             a1, a2, a3 = st.columns([1, 1, 1])
-                            if a1.button("🗑️", key=f"del_{fl['id']}", help="حذف"):
-                                c.execute("DELETE FROM project_files WHERE id=?", (int(fl['id']),))
-                                conn.commit(); st.rerun()
-                            if a2.button("🔗", key=f"lnk_{fl['id']}", help="کپی لینک"):
-                                st.toast("لینک آماده کپی است")
-                                st.code(f"data:file;base64,{base64.b64encode(fl['file_blob']).decode()[:10]}...")
-                            a3.download_button("📥", fl['file_blob'], fl['file_name'], key=f"dw_{fl['id']}", help="دانلود")
+                            if a1.button("🗑️", key=f"del_{fl['id']}", help="پاک کردن"):
+                                c.execute("DELETE FROM project_files WHERE id=?", (int(fl['id']),)); conn.commit(); st.rerun()
+                            if a2.button("🔗", key=f"lnk_{fl['id']}", help="اشتراک‌گذاری"):
+                                st.toast("لینک کپی شد"); st.code(f"data:file;base64,{base64.b64encode(fl['file_blob']).decode()[:10]}...")
+                            # آیکون دانلود مشابه ویندوز ۱۱
+                            a3.download_button("💾", fl['file_blob'], fl['file_name'], key=f"dw_{fl['id']}", help="ذخیره")
 
 with tabs[0]: render_dash("نظارتی 🛡️")
 with tabs[1]: render_dash("شخصی 👷")
 
-# --- آپلود فایل (اصلاح شده خط ۱۲۵) ---
+# --- آپلود فایل ---
 with tabs[2]:
     st.subheader("📤 آپلود مدارک")
     u_sec = st.radio("بخش:", ["نظارتی 🛡️", "شخصی 👷"], horizontal=True, key="up_sec_main")
@@ -131,36 +126,32 @@ with tabs[2]:
                 s_f = st.selectbox("پوشه:", fs['name'].tolist())
                 f_id = fs[fs['name']==s_f]['id'].values[0]
                 up_file = st.file_uploader("انتخاب فایل")
-                if st.button("ثبت فایل نهایی") and up_file:
-                    file_data = up_file.read()
-                    c.execute("INSERT INTO project_files (proj_id, folder_id, file_name, file_blob) VALUES (?,?,?,?)", 
-                              (int(p_id), int(f_id), up_file.name, file_data))
-                    conn.commit(); st.success("فایل با موفقیت ذخیره شد")
+                if st.button("ثبت فایل") and up_file:
+                    c.execute("INSERT INTO project_files (proj_id,folder_id,file_name,file_blob) VALUES (?,?,?,?)", (int(p_id), int(f_id), up_file.name, up_file.read()))
+                    conn.commit(); st.success("انجام شد")
 
-# --- تنظیمات سیستم ---
+# --- تنظیمات سیستم (اصلاح متن‌ها طبق درخواست) ---
 with tabs[3]:
-    st.subheader("⚙️ تنظیمات زیرساخت")
+    st.subheader("⚙️ تنظیمات سیستم")
     m_sec = st.radio("بخش تنظیمات:", ["نظارتی 🛡️", "شخصی 👷"], horizontal=True, key="m_setting")
     st.divider()
     cl, cr = st.columns(2)
     with cl:
-        st.subheader("📍 مدیریت محل")
+        st.subheader("📍 مدیریت محل پروژه") # تغییر طبق درخواست
         ps = pd.read_sql("SELECT * FROM locations WHERE level='استان' AND p_type=?", conn, params=(m_sec,))
         s_p = st.selectbox("استان:", ["--- جدید ---"] + ps['name'].tolist(), key="set_p")
         if s_p == "--- جدید ---":
-            np = st.text_input("نام استان جدید:")
+            np = st.text_input("نام استان جدید:"); 
             if st.button("ثبت استان"):
-                c.execute("INSERT INTO locations (name,level,p_type,parent_id) VALUES (?,?,?,0)", (np,"استان",m_sec))
-                conn.commit(); st.rerun()
+                c.execute("INSERT INTO locations (name,level,p_type,parent_id) VALUES (?,?,?,0)", (np,"استان",m_sec)); conn.commit(); st.rerun()
         else:
             p_id = ps[ps['name']==s_p]['id'].values[0]
             cs = pd.read_sql("SELECT * FROM locations WHERE level='شهرستان' AND parent_id=?", conn, params=(int(p_id),))
             s_c = st.selectbox("شهرستان:", ["--- جدید ---"] + cs['name'].tolist(), key="set_c")
             if s_c == "--- جدید ---":
-                nc = st.text_input("نام شهرستان:")
+                nc = st.text_input("نام شهرستان:"); 
                 if st.button("ثبت شهرستان"):
-                    c.execute("INSERT INTO locations (name,level,p_type,parent_id) VALUES (?,?,?,?)",(nc,"شهرستان",m_sec,int(p_id)))
-                    conn.commit(); st.rerun()
+                    c.execute("INSERT INTO locations (name,level,p_type,parent_id) VALUES (?,?,?,?)",(nc,"شهرستان",m_sec,int(p_id))); conn.commit(); st.rerun()
             else:
                 c_id = cs[cs['name']==s_c]['id'].values[0]
                 vs = pd.read_sql("SELECT * FROM locations WHERE level='شهر یا روستا' AND parent_id=?", conn, params=(int(c_id),))
@@ -168,18 +159,16 @@ with tabs[3]:
                 if s_v == "--- جدید ---":
                     nv = st.text_input("نام محل:"); t = st.selectbox("نوع:",["شهر","روستا"])
                     if st.button("ثبت محل"):
-                        c.execute("INSERT INTO locations (name,level,p_type,parent_id) VALUES (?,?,?,?)",(f"{t} {nv}","شهر یا روستا",m_sec,int(c_id)))
-                        conn.commit(); st.rerun()
+                        c.execute("INSERT INTO locations (name,level,p_type,parent_id) VALUES (?,?,?,?)",(f"{t} {nv}","شهر یا روستا",m_sec,int(c_id))); conn.commit(); st.rerun()
     with cr:
-        st.subheader("🏗️ پروژه و پوشه")
+        st.subheader("🏗️ مدیریت پروژه") # تغییر طبق درخواست
         v_list = pd.read_sql("SELECT * FROM locations WHERE level='شهر یا روستا' AND p_type=?", conn, params=(m_sec,))
         if not v_list.empty:
             sv = st.selectbox("انتخاب محل:", v_list['name'].tolist(), key="set_pj_loc")
-            pn = st.text_input("نام پروژه:"); cp = st.text_input("شرکت مسئول:"); cn = st.text_input("قرارداد:")
+            pn = st.text_input("نام پروژه:"); cp = st.text_input("شرکت:"); cn = st.text_input("قرارداد:")
             if st.button("ثبت پروژه"):
                 v_id = v_list[v_list['name']==sv]['id'].values[0]
-                c.execute("INSERT INTO projects (loc_id,name,company,contract_no,p_type) VALUES (?,?,?,?,?)",(int(v_id),pn,cp,cn,m_sec))
-                conn.commit(); st.rerun()
+                c.execute("INSERT INTO projects (loc_id,name,company,contract_no,p_type) VALUES (?,?,?,?,?)",(int(v_id),pn,cp,cn,m_sec)); conn.commit(); st.rerun()
         st.divider()
         all_projs = pd.read_sql("SELECT * FROM projects WHERE p_type=?", conn, params=(m_sec,))
         if not all_projs.empty:
@@ -187,5 +176,4 @@ with tabs[3]:
             nf = st.text_input("نام پوشه جدید:")
             if st.button("ایجاد پوشه"):
                 pid = all_projs[all_projs['name']==spj]['id'].values[0]
-                c.execute("INSERT INTO project_folders (proj_id,name,p_type) VALUES (?,?,?)",(int(pid),nf,m_sec))
-                conn.commit(); st.rerun()
+                c.execute("INSERT INTO project_folders (proj_id,name,p_type) VALUES (?,?,?)",(int(pid),nf,m_sec)); conn.commit(); st.rerun()

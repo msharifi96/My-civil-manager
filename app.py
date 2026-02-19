@@ -62,7 +62,7 @@ st.markdown("""
 
 tabs = st.tabs(["🛡️ داشبورد نظارتی", "👷 داشبورد شخصی", "📤 آپلود فایل", "📍 تنظیمات سیستم"])
 
-# --- تابع داشبورد (با نمایش شماره قرارداد) ---
+# --- تابع داشبورد ---
 def render_dash(label):
     col_tree, col_view = st.columns([1, 2.5])
     with col_tree:
@@ -78,7 +78,7 @@ def render_dash(label):
                             with st.expander(f"📍 {vl['name']}"):
                                 pjs = pd.read_sql("SELECT * FROM projects WHERE loc_id=? AND p_type=?", conn, params=(int(vl['id']), label))
                                 for _, pj in pjs.iterrows():
-                                    # تغییر اصلی: نمایش شماره قرارداد به جای نام پروژه در دکمه
+                                    # نمایش شماره قرارداد در داشبورد طبق درخواست شما
                                     btn_label = f"📄 ق: {pj['contract_no']}" if pj['contract_no'] else f"🏗️ {pj['name']}"
                                     if st.button(btn_label, key=f"pj_{label}_{pj['id']}", use_container_width=True):
                                         st.session_state[f'act_{label}'] = pj.to_dict()
@@ -86,7 +86,7 @@ def render_dash(label):
     with col_view:
         if f'act_{label}' in st.session_state:
             pj = st.session_state[f'act_{label}']
-            st.header(f"🏗️ {pj['name']}") # نام پروژه اینجا نمایش داده می‌شود
+            st.header(f"🏗️ {pj['name']}")
             st.info(f"🏢 پیمانکار: {pj['company']} | 📄 شماره قرارداد: {pj['contract_no']}")
             flds = pd.read_sql("SELECT * FROM project_folders WHERE proj_id=?", conn, params=(int(pj['id']),))
             for _, fld in flds.iterrows():
@@ -98,16 +98,16 @@ def render_dash(label):
                             st.write(f"📄 {fl['file_name']}")
                         with c_btns:
                             a1, a2, a3 = st.columns([1, 1, 1])
-                            if a1.button("🗑️", key=f"del_{fl['id']}", help="پاک کردن"):
+                            if a1.button("🗑️", key=f"del_{fl['id']}", help="حذف"):
                                 c.execute("DELETE FROM project_files WHERE id=?", (int(fl['id']),)); conn.commit(); st.rerun()
-                            if a2.button("🔗", key=f"lnk_{fl['id']}", help="لینک موقت"):
+                            if a2.button("🔗", key=f"lnk_{fl['id']}", help="کپی لینک"):
                                 st.toast("لینک کپی شد"); st.code(f"data:file;base64,{base64.b64encode(fl['file_blob']).decode()[:10]}...")
                             a3.download_button("💾", fl['file_blob'], fl['file_name'], key=f"dw_{fl['id']}", help="ذخیره")
 
 with tabs[0]: render_dash("نظارتی 🛡️")
 with tabs[1]: render_dash("شخصی 👷")
 
-# --- بخش آپلود و تنظیمات (ثابت مانند قبل) ---
+# --- آپلود فایل (اصلاح شده) ---
 with tabs[2]:
     st.subheader("📤 آپلود مدارک")
     u_sec = st.radio("بخش:", ["نظارتی 🛡️", "شخصی 👷"], horizontal=True, key="up_sec_main")
@@ -116,4 +116,46 @@ with tabs[2]:
         c1, c2 = st.columns(2)
         with c1:
             s_p = st.selectbox("پروژه:", all_p['name'].tolist())
-            p_id = all_p[all_p['
+            p_id = all_p[all_p['name']==s_p]['id'].values[0]
+            fs = pd.read_sql("SELECT * FROM project_folders WHERE proj_id=?", conn, params=(int(p_id),))
+            if not fs.empty:
+                s_f = st.selectbox("پوشه:", fs['name'].tolist())
+                f_id = fs[fs['name']==s_f]['id'].values[0]
+                up_file = st.file_uploader("انتخاب فایل")
+                if st.button("ثبت فایل") and up_file:
+                    c.execute("INSERT INTO project_files (proj_id,folder_id,file_name,file_blob) VALUES (?,?,?,?)", (int(p_id), int(f_id), up_file.name, up_file.read()))
+                    conn.commit(); st.success("فایل با موفقیت ثبت شد")
+
+# --- تنظیمات سیستم ---
+with tabs[3]:
+    st.subheader("⚙️ تنظیمات سیستم")
+    m_sec = st.radio("بخش تنظیمات:", ["نظارتی 🛡️", "شخصی 👷"], horizontal=True, key="m_setting")
+    st.divider()
+    cl, cr = st.columns(2)
+    with cl:
+        st.subheader("📍 مدیریت محل پروژه")
+        ps = pd.read_sql("SELECT * FROM locations WHERE level='استان' AND p_type=?", conn, params=(m_sec,))
+        s_p = st.selectbox("استان:", ["--- جدید ---"] + ps['name'].tolist(), key="set_p")
+        if s_p == "--- جدید ---":
+            np = st.text_input("نام استان جدید:"); 
+            if st.button("ثبت استان"):
+                c.execute("INSERT INTO locations (name,level,p_type,parent_id) VALUES (?,?,?,0)", (np,"استان",m_sec)); conn.commit(); st.rerun()
+        else:
+            p_id = ps[ps['name']==s_p]['id'].values[0]
+            cs = pd.read_sql("SELECT * FROM locations WHERE level='شهرستان' AND parent_id=?", conn, params=(int(p_id),))
+            s_c = st.selectbox("شهرستان:", ["--- جدید ---"] + cs['name'].tolist(), key="set_c")
+            if s_c == "--- جدید ---":
+                nc = st.text_input("نام شهرستان:"); 
+                if st.button("ثبت شهرستان"):
+                    c.execute("INSERT INTO locations (name,level,p_type,parent_id) VALUES (?,?,?,?)",(nc,"شهرستان",m_sec,int(p_id))); conn.commit(); st.rerun()
+            else:
+                c_id = cs[cs['name']==s_c]['id'].values[0]
+                vs = pd.read_sql("SELECT * FROM locations WHERE level='شهر یا روستا' AND parent_id=?", conn, params=(int(c_id),))
+                s_v = st.selectbox("شهر/روستا:", ["--- جدید ---"] + vs['name'].tolist(), key="set_v")
+                if s_v == "--- جدید ---":
+                    nv = st.text_input("نام محل:"); t = st.selectbox("نوع:",["شهر","روستا"])
+                    if st.button("ثبت محل"):
+                        c.execute("INSERT INTO locations (name,level,p_type,parent_id) VALUES (?,?,?,?)",(f"{t} {nv}","شهر یا روستا",m_sec,int(c_id))); conn.commit(); st.rerun()
+    with cr:
+        st.subheader("🏗️ مدیریت پروژه")
+        v_list = pd.read_sql("SELECT * FROM locations WHERE level='شهر یا روستا' AND p_type=?", conn

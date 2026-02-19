@@ -4,7 +4,7 @@ import sqlite3
 import time
 
 # اتصال به دیتابیس
-conn = sqlite3.connect('civil_pro_v13.db', check_same_thread=False)
+conn = sqlite3.connect('civil_pro_v14.db', check_same_thread=False)
 c = conn.cursor()
 
 # ایجاد جداول
@@ -14,11 +14,11 @@ c.execute('CREATE TABLE IF NOT EXISTS project_folders (id INTEGER PRIMARY KEY, p
 c.execute('CREATE TABLE IF NOT EXISTS project_files (id INTEGER PRIMARY KEY, proj_id INTEGER, folder_id INTEGER, file_name TEXT, file_blob BLOB)')
 conn.commit()
 
-# تابع کمکی برای نمایش پیغام موقت
+# تابع پیغام موقت
 def show_success_and_clear():
     msg = st.empty()
     msg.success("انجام شد")
-    time.sleep(1.5) # زمان توقف (یک و نیم ثانیه)
+    time.sleep(1.5)
     msg.empty()
 
 st.set_page_config(page_title="مدیریت مهندسی شریفی", layout="wide")
@@ -38,16 +38,16 @@ with tab_loc:
     st.subheader("مدیریت مناطق")
     col1, col2 = st.columns(2)
     with col1:
-        lvl = st.radio("سطح جدید:", ["استان", "شهرستان", "شهر یا روستا"], horizontal=True)
+        lvl = st.radio("سطح جدید:", ["استان", "شهرستان", "شهر یا روستا"], horizontal=True, key="reg_lvl")
         pid = 0
         if lvl != "استان":
             t_lvl = "استان" if lvl == "شهرستان" else "شهرستان"
             parents = pd.read_sql(f"SELECT * FROM locations WHERE level='{t_lvl}'", conn)
             if not parents.empty:
-                sel_p = st.selectbox(f"انتخاب {t_lvl}", parents['name'].tolist())
+                sel_p = st.selectbox(f"انتخاب {t_lvl}", parents['name'].tolist(), key="reg_parent")
                 pid = parents[parents['name'] == sel_p]['id'].values[0]
-        l_name = st.text_input(f"نام {lvl}")
-        if st.button(f"ثبت {lvl}"):
+        l_name = st.text_input(f"نام {lvl}", key="reg_name")
+        if st.button("ثبت منطقه", key="reg_btn"):
             c.execute("INSERT INTO locations (name, level, parent_id) VALUES (?,?,?)", (l_name, lvl, int(pid)))
             conn.commit()
             show_success_and_clear()
@@ -56,26 +56,25 @@ with tab_loc:
     with col2:
         all_l = pd.read_sql("SELECT * FROM locations", conn)
         if not all_l.empty:
-            del_n = st.selectbox("حذف منطقه", all_l['name'].tolist())
-            if st.button("حذف نهایی منطقه"):
+            del_n = st.selectbox("حذف منطقه", all_l['name'].tolist(), key="del_loc_sel")
+            if st.button("حذف نهایی منطقه", key="del_loc_btn"):
                 c.execute("DELETE FROM locations WHERE name=?", (del_n,))
                 conn.commit()
                 show_success_and_clear()
                 st.rerun()
 
-# --- تب پروژه‌ها (ثبت و آپلود) ---
+# --- تب پروژه‌ها ---
 with tab_proj:
     st.subheader("مدیریت پروژه‌ها و فایل‌ها")
-    p_sec = st.radio("بخش:", ["نظارتی 🛡️", "شخصی 👷"], horizontal=True)
+    p_sec = st.radio("بخش:", ["نظارتی 🛡️", "شخصی 👷"], horizontal=True, key="proj_sec")
     cp1, cp2 = st.columns(2)
     with cp1:
         vills = pd.read_sql("SELECT * FROM locations WHERE level='شهر یا روستا'", conn)
         if not vills.empty:
-            # تفکیک شهر/روستا در انتخاب
-            sv = st.selectbox("انتخاب شهر یا روستا", vills['name'].tolist())
+            sv = st.selectbox("انتخاب شهر یا روستا", vills['name'].tolist(), key="proj_vill_sel")
             vid = vills[vills['name'] == sv]['id'].values[0]
-            pn = st.text_input("نام پروژه")
-            if st.button("ثبت پروژه"):
+            pn = st.text_input("نام پروژه", key="proj_name_input")
+            if st.button("ثبت پروژه", key="proj_save_btn"):
                 c.execute("INSERT INTO projects (loc_id, name, p_type) VALUES (?,?,?)", (int(vid), pn, p_sec))
                 conn.commit()
                 show_success_and_clear()
@@ -83,33 +82,31 @@ with tab_proj:
     with cp2:
         prjs = pd.read_sql(f"SELECT * FROM projects WHERE p_type='{p_sec}'", conn)
         if not prjs.empty:
-            spn = st.selectbox("انتخاب پروژه برای مدیریت پوشه و فایل", prjs['name'].tolist())
+            spn = st.selectbox("انتخاب پروژه", prjs['name'].tolist(), key="file_proj_sel")
             pid = prjs[prjs['name'] == spn]['id'].values[0]
-            
-            fn = st.text_input("نام پوشه جدید")
-            if st.button("ساخت پوشه"):
+            fn = st.text_input("نام پوشه جدید", key="folder_name_input")
+            if st.button("ساخت پوشه", key="folder_save_btn"):
                 c.execute("INSERT INTO project_folders (proj_id, name) VALUES (?,?)", (pid, fn))
                 conn.commit()
                 show_success_and_clear()
             
-            st.divider()
             flds = pd.read_sql(f"SELECT * FROM project_folders WHERE proj_id={pid}", conn)
             if not flds.empty:
-                sfn = st.selectbox("انتخاب پوشه مقصد برای آپلود", flds['name'].tolist())
+                sfn = st.selectbox("انتخاب پوشه مقصد", flds['name'].tolist(), key="file_fld_sel")
                 fid = flds[flds['name'] == sfn]['id'].values[0]
-                up = st.file_uploader("انتخاب فایل")
-                if st.button("بارگذاری و ذخیره نهایی"):
+                up = st.file_uploader("انتخاب فایل", key="file_up_widget")
+                if st.button("بارگذاری فایل", key="file_save_btn"):
                     if up:
                         c.execute("INSERT INTO project_files (proj_id, folder_id, file_name, file_blob) VALUES (?,?,?,?)", (pid, fid, up.name, up.read()))
                         conn.commit()
                         show_success_and_clear()
 
-# --- تب داشبورد (نمایش درختی و دانلود) ---
+# --- تب داشبورد ---
 with tab_dash:
     col_tree, col_view = st.columns([1, 2])
     with col_tree:
         st.subheader("بایگانی")
-        ds = st.radio("بخش:", ["نظارتی 🛡️", "شخصی 👷"], horizontal=True)
+        ds = st.radio("بخش نمایش:", ["نظارتی 🛡️", "شخصی 👷"], horizontal=True, key="dash_sec_radio")
         provs = pd.read_sql("SELECT * FROM locations WHERE level='استان'", conn)
         for _, prov in provs.iterrows():
             with st.expander(f"📁 {prov['name']}"):
@@ -121,7 +118,7 @@ with tab_dash:
                             with st.expander(f"📍 {vl['name']}"):
                                 pjs = pd.read_sql(f"SELECT * FROM projects WHERE loc_id={vl['id']} AND p_type='{ds}'", conn)
                                 for _, pj in pjs.iterrows():
-                                    if st.button(f"🏗️ {pj['name']}", key=f"dash_{pj['id']}"):
+                                    if st.button(f"🏗️ {pj['name']}", key=f"btn_pj_{pj['id']}"):
                                         st.session_state.active_pj = pj['id']
                                         st.session_state.active_pj_name = pj['name']
 
@@ -135,9 +132,9 @@ with tab_dash:
                     for _, fl in files.iterrows():
                         c1, c2 = st.columns([4, 1])
                         c1.text(fl['file_name'])
-                        c2.download_button("📥", fl['file_blob'], fl['file_name'], key=f"dl_{fl['id']}")
+                        c2.download_button("📥", fl['file_blob'], fl['file_name'], key=f"dl_btn_{fl['id']}")
             
-            if st.button("🗑️ حذف کامل این پروژه"):
+            if st.button("🗑️ حذف کامل این پروژه", key="del_pj_final"):
                 c.execute("DELETE FROM projects WHERE id=?", (st.session_state.active_pj,))
                 conn.commit()
                 del st.session_state.active_pj

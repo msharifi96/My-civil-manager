@@ -3,40 +3,33 @@ import pandas as pd
 import sqlite3
 import base64
 
-# ۱. اتصال به دیتابیس
+# ۱. اتصال به دیتابیس (نسخه ۲۶)
 DB_NAME = 'civil_pro_final_v26.db'
 conn = sqlite3.connect(DB_NAME, check_same_thread=False)
 c = conn.cursor()
 
+# ایجاد جداول
+c.execute('CREATE TABLE IF NOT EXISTS locations (id INTEGER PRIMARY KEY, name TEXT, level TEXT, p_type TEXT, parent_id INTEGER)')
+c.execute('CREATE TABLE IF NOT EXISTS projects (id INTEGER PRIMARY KEY, loc_id INTEGER, name TEXT, company TEXT, contract_no TEXT, p_type TEXT)')
+c.execute('CREATE TABLE IF NOT EXISTS project_folders (id INTEGER PRIMARY KEY, proj_id INTEGER, name TEXT, p_type TEXT)')
+c.execute('CREATE TABLE IF NOT EXISTS project_files (id INTEGER PRIMARY KEY, proj_id INTEGER, folder_id INTEGER, file_name TEXT, file_blob BLOB)')
+conn.commit()
+
 st.set_page_config(page_title="مدیریت مهندسی شریفی", layout="wide")
 
-# استایل CSS برای حذف مربع‌ها و چسباندن آیکون‌ها به هم
+# استایل پایه برای راست‌چین کردن
 st.markdown("""
     <style>
-    /* تنظیمات کلی راست‌چین */
-    .main, .stTabs, .stSelectbox, .stTextInput, .stMarkdown, p, h1, h2, h3 { 
+    .main, .stTabs, .stSelectbox, .stTextInput, .stButton, .stMarkdown, p, h1, h2, h3 { 
         direction: rtl; 
         text-align: right; 
     }
-    
-    /* حذف مربع، سایه و پس‌زمینه از دکمه‌های آیکونی */
-    .file-ops-container button, 
-    .file-ops-container div[data-testid="stDownloadButton"] > button {
+    /* حذف کادر دور دکمه‌ها بدون جابجایی ستون‌ها */
+    div[data-testid="column"] button, 
+    div[data-testid="stDownloadButton"] button {
         border: none !important;
         background: transparent !important;
         box-shadow: none !important;
-        padding: 0 !important;
-        width: 28px !important;
-        height: 28px !important;
-        min-height: unset !important;
-    }
-
-    /* نزدیک کردن آیکون‌ها به هم */
-    .file-ops-container div[data-testid="column"] {
-        width: fit-content !important;
-        flex: unset !important;
-        min-width: 32px !important;
-        gap: 0px !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -48,7 +41,6 @@ def render_dash(label):
     
     with col_tree:
         st.subheader(f"آرشیو {label}")
-        # لود کردن لیست‌ها (مشابه نسخه ۲۶)
         provs = pd.read_sql(f"SELECT * FROM locations WHERE level='استان' AND p_type='{label}'", conn)
         for _, prov in provs.iterrows():
             with st.expander(f"🔹 {prov['name']}"):
@@ -74,30 +66,46 @@ def render_dash(label):
                 with st.expander(f"📁 {fld['name']}", expanded=True):
                     files = pd.read_sql(f"SELECT * FROM project_files WHERE folder_id={fld['id']}", conn)
                     for _, fl in files.iterrows():
-                        # ایجاد دو ستون: نام در راست و آیکون‌ها در چپ
-                        c_icons, c_name = st.columns([1, 4])
-                        
-                        with c_name:
-                            st.markdown(f"<div style='padding-top:8px;'>📄 {fl['file_name']}</div>", unsafe_allow_html=True)
-                        
-                        with c_icons:
-                            # اعمال کلاس برای حذف کادرها و کم کردن فاصله
-                            st.markdown('<div class="file-ops-container">', unsafe_allow_html=True)
-                            i1, i2, i3 = st.columns(3)
-                            # حذف
-                            if i1.button("🗑️", key=f"del_{fl['id']}"):
+                        col_name, col_actions = st.columns([3, 1])
+                        with col_name:
+                            st.write(f"📄 {fl['file_name']}")
+                        with col_actions:
+                            a1, a2, a3 = st.columns(3)
+                            if a1.button("🗑️", key=f"del_{fl['id']}"):
                                 c.execute(f"DELETE FROM project_files WHERE id={fl['id']}")
                                 conn.commit(); st.rerun()
-                            # لینک
-                            if i2.button("🔗", key=f"lnk_{fl['id']}"):
+                            if a2.button("🔗", key=f"lnk_{fl['id']}"):
                                 b64 = base64.b64encode(fl['file_blob']).decode()
                                 st.toast("لینک ساخته شد")
                                 st.code(f"data:file;base64,{b64[:10]}...")
-                            # دانلود
-                            i3.download_button("📥", fl['file_blob'], fl['file_name'], key=f"dw_{fl['id']}")
-                            st.markdown('</div>', unsafe_allow_html=True)
+                            a3.download_button("📥", fl['file_blob'], fl['file_name'], key=f"dw_{fl['id']}")
 
 with tabs[0]: render_dash("نظارتی 🛡️")
 with tabs[1]: render_dash("شخصی 👷")
 
-# بقیه کدهای آپلود و تنظیمات از نسخه ۲۶ بدون تغییر باقی بماند...
+# بخش آپلود مدارک
+with tabs[2]:
+    st.subheader("📤 آپلود مدارک")
+    u_sec = st.radio("بخش مقصد:", ["نظارتی 🛡️", "شخصی 👷"], horizontal=True)
+    all_p = pd.read_sql(f"SELECT * FROM projects WHERE p_type='{u_sec}'", conn)
+    if not all_p.empty:
+        c1, c2 = st.columns(2)
+        with c1:
+            s_p = st.selectbox("انتخاب پروژه:", all_p['name'].tolist())
+            p_id = all_p[all_p['name']==s_p]['id'].values[0]
+            fs = pd.read_sql(f"SELECT * FROM project_folders WHERE proj_id={p_id}", conn)
+            if not fs.empty:
+                s_f = st.selectbox("انتخاب پوشه:", fs['name'].tolist())
+                f_id = fs[fs['name']==s_f]['id'].values[0]
+                up_file = st.file_uploader("فایل مورد نظر را انتخاب کنید")
+                if st.button("🚀 ثبت فایل") and up_file:
+                    c.execute("INSERT INTO project_files (proj_id,folder_id,file_name,file_blob) VALUES (?,?,?,?)",
+                              (int(p_id), int(f_id), up_file.name, up_file.read()))
+                    conn.commit(); st.success("فایل ذخیره شد")
+            else: st.warning("ابتدا پوشه بسازید")
+
+# بخش تنظیمات
+with tabs[3]:
+    st.subheader("⚙️ تنظیمات سیستم")
+    st.info("در این بخش می‌توانید ساختار استان‌ها، شهرها و پروژه‌ها را مدیریت کنید.")
+    # کدهای مدیریت لوکیشن مشابه قبل...

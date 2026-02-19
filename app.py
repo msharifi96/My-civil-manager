@@ -3,116 +3,155 @@ import pandas as pd
 import sqlite3
 import time
 
-# اتصال به دیتابیس (استفاده از نسخه ثابت برای حفظ داده‌ها)
-conn = sqlite3.connect('civil_pro_v18.db', check_same_thread=False)
+# اتصال به دیتابیس
+conn = sqlite3.connect('civil_pro_v19.db', check_same_thread=False)
 c = conn.cursor()
 
-# اطمینان از وجود ستون p_type در همه جداول کلیدی
-try:
-    c.execute('ALTER TABLE project_folders ADD COLUMN p_type TEXT')
-    conn.commit()
-except:
-    pass
+# ایجاد جداول با ساختار دقیق تفکیک‌شده
+c.execute('CREATE TABLE IF NOT EXISTS locations (id INTEGER PRIMARY KEY, name TEXT, level TEXT, p_type TEXT, parent_id INTEGER)')
+c.execute('CREATE TABLE IF NOT EXISTS projects (id INTEGER PRIMARY KEY, loc_id INTEGER, name TEXT, p_type TEXT)')
+c.execute('CREATE TABLE IF NOT EXISTS project_folders (id INTEGER PRIMARY KEY, proj_id INTEGER, name TEXT, p_type TEXT)')
+c.execute('CREATE TABLE IF NOT EXISTS project_files (id INTEGER PRIMARY KEY, proj_id INTEGER, folder_id INTEGER, file_name TEXT, file_blob BLOB)')
+conn.commit()
 
 def show_done():
     msg = st.empty()
-    msg.success("انجام شد")
+    msg.success("✅ با موفقیت ثبت شد")
     time.sleep(1)
     msg.empty()
 
 st.set_page_config(page_title="مدیریت مهندسی شریفی", layout="wide")
 
-# استایل RTL
+# استایل RTL (راست‌چین)
 st.markdown("""
     <style>
     .main, .stTabs, .stSelectbox, .stTextInput, .stButton, .stMarkdown, p, h1, h2, h3 { direction: rtl; text-align: right; }
-    .stButton>button { width: 100%; border-radius: 5px; background-color: #004a99; color: white; }
+    .stButton>button { width: 100%; border-radius: 8px; background-color: #004a99; color: white; height: 3em; font-weight: bold; }
+    .stExpander { border: 1px solid #004a99; border-radius: 5px; margin-bottom: 5px; }
     </style>
     """, unsafe_allow_html=True)
 
-tabs = st.tabs(["🛡️ داشبورد نظارتی", "👷 داشبورد شخصی", "📤 آپلود فایل", "📍 تنظیمات"])
+# تعریف ۴ تب مجزا طبق درخواست شما
+tabs = st.tabs(["🛡️ داشبورد نظارتی", "👷 داشبورد شخصی", "📤 آپلود فایل", "📍 تنظیمات سیستم"])
 
-# --- توابع داشبورد (مشابه قبل) ---
-def render_dashboard(p_type_filter):
-    c_tree, c_view = st.columns([1, 2])
-    with c_tree:
-        st.subheader(f"بایگانی {p_type_filter}")
-        provs = pd.read_sql(f"SELECT * FROM locations WHERE level='استان' AND p_type='{p_type_filter}'", conn)
+# --- تابع نمایش داشبورد ---
+def render_dash(p_type_label):
+    col_tree, col_view = st.columns([1, 2])
+    with col_tree:
+        st.subheader(f"🗂️ آرشیو {p_type_label}")
+        provs = pd.read_sql(f"SELECT * FROM locations WHERE level='استان' AND p_type='{p_type_label}'", conn)
         for _, prov in provs.iterrows():
-            with st.expander(f"📁 {prov['name']}"):
+            with st.expander(f"🔹 {prov['name']}"):
                 cnts = pd.read_sql(f"SELECT * FROM locations WHERE level='شهرستان' AND parent_id={prov['id']}", conn)
                 for _, cnt in cnts.iterrows():
-                    with st.expander(f"📂 {cnt['name']}"):
+                    with st.expander(f"🔸 {cnt['name']}"):
                         vls = pd.read_sql(f"SELECT * FROM locations WHERE level='شهر یا روستا' AND parent_id={cnt['id']}", conn)
                         for _, vl in vls.iterrows():
                             with st.expander(f"📍 {vl['name']}"):
-                                pjs = pd.read_sql(f"SELECT * FROM projects WHERE loc_id={vl['id']} AND p_type='{p_type_filter}'", conn)
+                                pjs = pd.read_sql(f"SELECT * FROM projects WHERE loc_id={vl['id']} AND p_type='{p_type_label}'", conn)
                                 for _, pj in pjs.iterrows():
-                                    if st.button(f"🏗️ {pj['name']}", key=f"btn_{p_type_filter}_{pj['id']}"):
-                                        st.session_state[f'act_id_{p_type_filter}'] = pj['id']
-                                        st.session_state[f'act_n_{p_type_filter}'] = pj['name']
-    with c_view:
-        active_id_key = f'act_id_{p_type_filter}'
-        if active_id_key in st.session_state:
-            st.header(f"پروژه: {st.session_state[f'act_n_{p_type_filter}']}")
-            folders = pd.read_sql(f"SELECT * FROM project_folders WHERE proj_id={st.session_state[active_id_key]}", conn)
-            for _, fld in folders.iterrows():
+                                    if st.button(f"🏗️ {pj['name']}", key=f"d_{p_type_label}_{pj['id']}"):
+                                        st.session_state[f'act_p_{p_type_label}'] = (pj['id'], pj['name'])
+    with col_view:
+        key_act = f'act_p_{p_type_label}'
+        if key_act in st.session_state:
+            pid, pname = st.session_state[key_act]
+            st.header(f"پروژه: {pname}")
+            flds = pd.read_sql(f"SELECT * FROM project_folders WHERE proj_id={pid}", conn)
+            for _, fld in flds.iterrows():
                 files = pd.read_sql(f"SELECT * FROM project_files WHERE folder_id={fld['id']}", conn)
                 with st.expander(f"📁 {fld['name']} ({len(files)} فایل)"):
                     for _, fl in files.iterrows():
                         c1, c2 = st.columns([4, 1])
-                        c1.text(fl['file_name'])
-                        c2.download_button("📥", fl['file_blob'], fl['file_name'], key=f"dl_{fl['id']}_{p_type_filter}")
+                        c1.text(f"📄 {fl['file_name']}")
+                        c2.download_button("📥", fl['file_blob'], fl['file_name'], key=f"f_{fl['id']}")
+        else: st.info("لطفاً یک پروژه را از لیست سمت راست انتخاب کنید.")
 
-with tabs[0]: render_dashboard("نظارتی 🛡️")
-with tabs[1]: render_dashboard("شخصی 👷")
+# --- اجرای تب‌ها ---
+with tabs[0]: render_dash("نظارتی 🛡️")
+with tabs[1]: render_dash("شخصی 👷")
 
-# --- اصلاح بخش آپلود (رفع مشکل تصویر شما) ---
-with tabs[2]:
-    st.subheader("📤 بارگذاری مدارک")
-    u_sec = st.radio("بارگذاری در کدام بخش؟", ["نظارتی 🛡️", "شخصی 👷"], horizontal=True, key="up_main_radio")
+with tabs[2]: # آپلود فایل (اصلاح شده)
+    st.subheader("📤 بارگذاری مدرک جدید")
+    u_sec = st.radio("بخش مورد نظر:", ["نظارتی 🛡️", "شخصی 👷"], horizontal=True, key="up_sec_choice")
     
-    # واکشی پروژه‌های بخش انتخاب شده
-    up_projs = pd.read_sql(f"SELECT * FROM projects WHERE p_type='{u_sec}'", conn)
-    
-    if not up_projs.empty:
-        col_u1, col_u2 = st.columns(2)
-        with col_u1:
-            s_up_p = st.selectbox("۱. انتخاب پروژه:", up_projs['name'].tolist(), key="up_p_selectbox")
-            u_pid = up_projs[up_projs['name'] == s_up_p]['id'].values[0]
+    projs = pd.read_sql(f"SELECT * FROM projects WHERE p_type='{u_sec}'", conn)
+    if not projs.empty:
+        c1, c2 = st.columns(2)
+        with c1:
+            sel_p = st.selectbox("۱. پروژه را انتخاب کنید:", projs['name'].tolist(), key="up_p_select")
+            pid = projs[projs['name'] == sel_p]['id'].values[0]
             
-            # واکشی تمام پوشه‌های متعلق به این پروژه (بدون سخت‌گیری روی p_type پوشه)
-            up_flds = pd.read_sql(f"SELECT * FROM project_folders WHERE proj_id={u_pid}", conn)
-            
-            if not up_flds.empty:
-                s_up_f = st.selectbox("۲. انتخاب پوشه مقصد:", up_flds['name'].tolist(), key="up_f_selectbox")
-                u_fid = up_flds[up_flds['name'] == s_up_f]['id'].values[0]
+            flds = pd.read_sql(f"SELECT * FROM project_folders WHERE proj_id={pid}", conn)
+            if not flds.empty:
+                sel_f = st.selectbox("۲. پوشه را انتخاب کنید:", flds['name'].tolist(), key="up_f_select")
+                fid = flds[flds['name'] == sel_f]['id'].values[0]
             else:
-                st.warning("⚠️ پوشه‌ای برای این پروژه یافت نشد. ابتدا در تب '📍 تنظیمات' برای این پروژه پوشه بسازید.")
-                u_fid = None
-        
-        with col_u2:
-            if u_fid:
-                up_file = st.file_uploader("۳. انتخاب فایل برای بارگذاری", key="main_file_uploader")
-                if st.button("🚀 شروع آپلود", key="start_upload_btn"):
-                    if up_file:
+                st.warning("⚠️ برای این پروژه هنوز پوشه‌ای نساخته‌اید.")
+                fid = None
+        with c2:
+            if fid:
+                file = st.file_uploader("۳. فایل را انتخاب کنید", key="file_up_widget")
+                if st.button("💾 ثبت در دیتابیس"):
+                    if file:
                         c.execute("INSERT INTO project_files (proj_id, folder_id, file_name, file_blob) VALUES (?,?,?,?)", 
-                                  (u_pid, u_fid, up_file.name, up_file.read()))
-                        conn.commit()
-                        show_done()
-    else:
-        st.info(f"در بخش {u_sec} هنوز پروژه‌ای تعریف نکرده‌اید.")
+                                  (pid, fid, file.name, file.read()))
+                        conn.commit(); show_done()
+    else: st.info(f"ابتدا در تب تنظیمات، برای بخش {u_sec} پروژه تعریف کنید.")
 
-# --- تب تنظیمات (مشابه قبل) ---
-with tabs[3]:
-    st.subheader("📍 تنظیمات سیستم")
-    m_sec = st.radio("تنظیمات برای:", ["نظارتی 🛡️", "شخصی 👷"], horizontal=True, key="m_setting_radio")
-    cl1, cl2 = st.columns(2)
-    with cl1:
-        st.subheader("🛠️ مدیریت مناطق")
-        # کدهای ثبت منطقه ...
-        lvl = st.radio("سطح:", ["استان", "شهرستان", "محل"], horizontal=True, key="loc_lvl_radio")
-        # (بقیه کد تنظیمات مناطق)
-    with cl2:
+with tabs[3]: # تنظیمات سیستم
+    st.subheader("⚙️ تنظیمات و تعریف پایه")
+    m_sec = st.radio("تنظیمات برای بخش:", ["نظارتی 🛡️", "شخصی 👷"], horizontal=True, key="m_set_sec")
+    st.divider()
+    col_a, col_b = st.columns(2)
+    
+    with col_a:
+        st.subheader("📍 مدیریت مناطق")
+        lvl = st.radio("سطح تعریف:", ["استان", "شهرستان", "محل"], horizontal=True)
+        if lvl == "استان":
+            n = st.text_input("نام استان جدید")
+            if st.button("ثبت استان"):
+                c.execute("INSERT INTO locations (name, level, p_type, parent_id) VALUES (?,?,?,0)", (n, "استان", m_sec))
+                conn.commit(); show_done(); st.rerun()
+        elif lvl == "شهرستان":
+            ps = pd.read_sql(f"SELECT * FROM locations WHERE level='استان' AND p_type='{m_sec}'", conn)
+            if not ps.empty:
+                sp = st.selectbox("استان مادر:", ps['name'].tolist())
+                pi = ps[ps['name'] == sp]['id'].values[0]
+                n = st.text_input("نام شهرستان جدید")
+                if st.button("ثبت شهرستان"):
+                    c.execute("INSERT INTO locations (name, level, p_type, parent_id) VALUES (?,?,?,?)", (n, "شهرستان", m_sec, int(pi)))
+                    conn.commit(); show_done(); st.rerun()
+        else:
+            cs = pd.read_sql(f"SELECT * FROM locations WHERE level='شهرستان' AND p_type='{m_sec}'", conn)
+            if not cs.empty:
+                sc = st.selectbox("شهرستان مادر:", cs['name'].tolist())
+                pi = cs[cs['name'] == sc]['id'].values[0]
+                tp = st.selectbox("نوع محل:", ["شهر 🏙️", "روستا 🏡"])
+                n = st.text_input("نام محل (شهر/روستا)")
+                if st.button("ثبت محل نهایی"):
+                    fn = f"{tp} {n}"
+                    c.execute("INSERT INTO locations (name, level, p_type, parent_id) VALUES (?,?,?,?)", (fn, "شهر یا روستا", m_sec, int(pi)))
+                    conn.commit(); show_done(); st.rerun()
+
+    with col_b:
         st.subheader("🏗️ مدیریت پروژه‌ها")
-        # (بقیه کد تنظیمات پروژه‌ها و پوشه‌ها)
+        vills = pd.read_sql(f"SELECT * FROM locations WHERE level='شهر یا روستا' AND p_type='{m_sec}'", conn)
+        if not vills.empty:
+            sv = st.selectbox("محل پروژه:", vills['name'].tolist(), key="p_v_s")
+            vi = vills[vills['name'] == sv]['id'].values[0]
+            pn = st.text_input("نام پروژه:")
+            if st.button("ثبت پروژه جدید"):
+                c.execute("INSERT INTO projects (loc_id, name, p_type) VALUES (?,?,?)", (int(vi), pn, m_sec))
+                conn.commit(); show_done(); st.rerun()
+        
+        st.divider()
+        st.subheader("📁 ساخت پوشه")
+        pjs = pd.read_sql(f"SELECT * FROM projects WHERE p_type='{m_sec}'", conn)
+        if not pjs.empty:
+            spj = st.selectbox("انتخاب پروژه:", pjs['name'].tolist(), key="f_p_s")
+            pji = pjs[pjs['name'] == spj]['id'].values[0]
+            fn = st.text_input("نام پوشه جدید (مثلاً: عکس‌های روزانه)")
+            if st.button("ایجاد پوشه"):
+                c.execute("INSERT INTO project_folders (proj_id, name, p_type) VALUES (?,?,?)", (pji, fn, m_sec))
+                conn.commit(); show_done()

@@ -92,7 +92,6 @@ def render_dash(label):
                 with st.expander(f"📁 {fld['name']}", expanded=True):
                     files = pd.read_sql("SELECT * FROM project_files WHERE folder_id=?", conn, params=(int(fld['id']),))
                     for _, fl in files.iterrows():
-                        # چیدمان اصلاح شده: نام فایل و آیکون‌ها در یک سطر تراز شده
                         c_name, c_btns = st.columns([4, 1.2])
                         with c_name:
                             st.write(f"📄 {fl['file_name']}")
@@ -123,47 +122,4 @@ with tabs[2]:
                 f_id = fs[fs['name']==s_f]['id'].values[0]
                 up_file = st.file_uploader("انتخاب فایل")
                 if st.button("ثبت فایل") and up_file:
-                    c.execute("INSERT INTO project_files (proj_id,folder_id,file_name,file_blob) VALUES (?,?,?,?)", (int(p_id), int(f_id), up_file.name, up_file.read()))
-                    conn.commit(); st.success("انجام شد")
-
-# --- تنظیمات سیستم ---
-with tabs[3]:
-    st.subheader("⚙️ تنظیمات سیستم")
-    m_sec = st.radio("بخش تنظیمات:", ["نظارتی 🛡️", "شخصی 👷"], horizontal=True, key="m_setting")
-    st.divider()
-    cl, cr = st.columns(2)
-    with cl:
-        st.subheader("📍 مدیریت محل")
-        ps = pd.read_sql("SELECT * FROM locations WHERE level='استان' AND p_type=?", conn, params=(m_sec,))
-        s_p = st.selectbox("استان:", ["--- جدید ---"] + ps['name'].tolist(), key="set_p")
-        if s_p == "--- جدید ---":
-            np = st.text_input("نام استان جدید:"); 
-            if st.button("ثبت استان"):
-                c.execute("INSERT INTO locations (name,level,p_type,parent_id) VALUES (?,?,?,0)", (np,"استان",m_sec)); conn.commit(); st.rerun()
-        else:
-            p_id = ps[ps['name']==s_p]['id'].values[0]
-            cs = pd.read_sql("SELECT * FROM locations WHERE level='شهرستان' AND parent_id=?", conn, params=(int(p_id),))
-            s_c = st.selectbox("شهرستان:", ["--- جدید ---"] + cs['name'].tolist(), key="set_c")
-            if s_c == "--- جدید ---":
-                nc = st.text_input("نام شهرستان:"); 
-                if st.button("ثبت شهرستان"):
-                    c.execute("INSERT INTO locations (name,level,p_type,parent_id) VALUES (?,?,?,?)",(nc,"شهرستان",m_sec,int(p_id))); conn.commit(); st.rerun()
-            else:
-                c_id = cs[cs['name']==s_c]['id'].values[0]
-                vs = pd.read_sql("SELECT * FROM locations WHERE level='شهر یا روستا' AND parent_id=?", conn, params=(int(c_id),))
-                s_v = st.selectbox("شهر/روستا:", ["--- جدید ---"] + vs['name'].tolist(), key="set_v")
-                if s_v == "--- جدید ---":
-                    nv = st.text_input("نام محل:"); t = st.selectbox("نوع:",["شهر","روستا"])
-                    if st.button("ثبت محل"):
-                        c.execute("INSERT INTO locations (name,level,p_type,parent_id) VALUES (?,?,?,?)",(f"{t} {nv}","شهر یا روستا",m_sec,int(c_id))); conn.commit(); st.rerun()
-    with cr:
-        st.subheader("🏗️ پروژه و پوشه")
-        v_list = pd.read_sql("SELECT * FROM locations WHERE level='شهر یا روستا' AND p_type=?", conn, params=(m_sec,))
-        if not v_list.empty:
-            sv = st.selectbox("انتخاب محل:", v_list['name'].tolist(), key="set_pj_loc")
-            pn = st.text_input("نام پروژه:"); cp = st.text_input("شرکت:"); cn = st.text_input("قرارداد:")
-            if st.button("ثبت پروژه"):
-                v_id = v_list[v_list['name']==sv]['id'].values[0]
-                c.execute("INSERT INTO projects (loc_id,name,company,contract_no,p_type) VALUES (?,?,?,?,?)",(int(v_id),pn,cp,cn,m_sec)); conn.commit(); st.rerun()
-        st.divider()
-        all_projs =
+                    c.execute("INSERT INTO project_files (proj_id,folder_id,file_name,file_blob) VALUES (?,?,?,?)", (

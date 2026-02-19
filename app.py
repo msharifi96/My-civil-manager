@@ -158,7 +158,7 @@ with tabs[3]:
             all_p_list['display_name'] = all_p_list.apply(lambda x: f"قرارداد: {x['contract_no']} - پروژه: {x['name']}", axis=1)
 
         if mode_proj == "افزودن پروژه":
-            st.write("### ➕ ثبت پروژه جدید")
+            # عنوان حذف شد برای زیبایی بیشتر طبق درخواست شما
             v_list = pd.read_sql("SELECT * FROM locations WHERE level='شهر یا روستا' AND p_type=?", conn, params=(m_sec,))
             if not v_list.empty:
                 sv = st.selectbox("انتخاب محل پروژه:", v_list['name'].tolist(), key="set_pj_loc")
@@ -178,7 +178,7 @@ with tabs[3]:
                     pid = all_p_list[all_p_list['display_name']==spj_display]['id'].values[0]
                     c.execute("INSERT INTO project_folders (proj_id,name,p_type) VALUES (?,?,?)",(int(pid),nf,m_sec)); conn.commit(); st.rerun()
         
-        else: # حالت ویرایش پروژه (یکپارچه)
+        else: # حالت ویرایش پروژه
             if not all_p_list.empty:
                 edit_p = st.selectbox("انتخاب پروژه جهت ویرایش:", all_p_list['display_name'].tolist())
                 p_id = all_p_list[all_p_list['display_name']==edit_p]['id'].values[0]

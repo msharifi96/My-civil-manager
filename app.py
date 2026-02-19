@@ -3,7 +3,7 @@ import pandas as pd
 import sqlite3
 import base64
 
-# ۱. اتصال به دیتابیس با مدیریت بهینه
+# ۱. اتصال به دیتابیس (ماندگاری دائمی داده‌ها)
 @st.cache_resource
 def get_connection():
     conn = sqlite3.connect('civil_pro_final_v26.db', check_same_thread=False)
@@ -12,7 +12,7 @@ def get_connection():
 conn = get_connection()
 c = conn.cursor()
 
-# ایجاد جداول پایه (توسعه یافته)
+# ایجاد جداول پایه
 c.execute('CREATE TABLE IF NOT EXISTS locations (id INTEGER PRIMARY KEY, name TEXT, level TEXT, p_type TEXT, parent_id INTEGER)')
 c.execute('CREATE TABLE IF NOT EXISTS projects (id INTEGER PRIMARY KEY, loc_id INTEGER, name TEXT, company TEXT, contract_no TEXT, p_type TEXT)')
 c.execute('CREATE TABLE IF NOT EXISTS project_folders (id INTEGER PRIMARY KEY, proj_id INTEGER, name TEXT, p_type TEXT)')
@@ -21,39 +21,43 @@ conn.commit()
 
 st.set_page_config(page_title="مدیریت مهندسی شریفی", layout="wide")
 
-# ۲. استایل هوشمند (اصلاح تب‌ها و آیکون‌ها)
+# ۲. استایل اختصاصی (راست‌چین تب‌ها و تراز عمودی آیکون‌ها)
 st.markdown("""
     <style>
-    /* راست‌چین کردن کل برنامه */
+    /* راست‌چین کردن کل صفحه */
     [data-testid="stAppViewContainer"], .main { 
         direction: rtl; 
         text-align: right; 
     }
     
-    /* انتقال تب‌ها از سمت چپ به راست */
+    /* راست‌چین کردن تب‌ها */
     .stTabs [data-baseweb="tab-list"] {
         direction: rtl;
         display: flex;
         justify-content: flex-start !important;
     }
-    
-    /* استایل دکمه‌های عملیاتی کوچک */
+
+    /* تراز کردن نام فایل و آیکون‌ها در یک سطر و وسط‌چین عمودی */
+    div[data-testid="column"] {
+        display: flex;
+        align-items: center; 
+    }
+
+    /* استایل دکمه‌های آیکونی فشرده */
     div[data-testid="column"] [data-testid="column"] button {
         border: none !important;
         background: transparent !important;
-        padding: 0 !important;
+        padding: 0 5px !important;
         font-size: 1.2rem !important;
         box-shadow: none !important;
+        line-height: 1 !important;
     }
     
+    /* حذف فاصله اضافی بین ستون‌ها */
     [data-testid="column"] { gap: 0px !important; }
-    .stTabs [data-baseweb="tab-list"] { direction: rtl; }
     
-    /* استایل متن و ورودی‌ها */
-    .stSelectbox, .stTextInput, .stButton, p, h1, h2, h3 { 
-        direction: rtl; 
-        text-align: right; 
-    }
+    /* اصلاح فونت کلی */
+    * { font-family: 'Tahoma', sans-serif; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -77,6 +81,7 @@ def render_dash(label):
                                 for _, pj in pjs.iterrows():
                                     if st.button(f"🏗️ {pj['name']}", key=f"pj_{label}_{pj['id']}", use_container_width=True):
                                         st.session_state[f'act_{label}'] = pj.to_dict()
+
     with col_view:
         if f'act_{label}' in st.session_state:
             pj = st.session_state[f'act_{label}']
@@ -87,13 +92,17 @@ def render_dash(label):
                 with st.expander(f"📁 {fld['name']}", expanded=True):
                     files = pd.read_sql("SELECT * FROM project_files WHERE folder_id=?", conn, params=(int(fld['id']),))
                     for _, fl in files.iterrows():
-                        cn, c1, c2, c3 = st.columns([4, 0.4, 0.4, 0.4])
-                        cn.write(f"📄 {fl['file_name']}")
-                        if c1.button("🗑️", key=f"del_{fl['id']}"):
-                            c.execute("DELETE FROM project_files WHERE id=?", (int(fl['id']),)); conn.commit(); st.rerun()
-                        if c2.button("🔗", key=f"lnk_{fl['id']}"):
-                            st.toast("لینک آماده کپی است"); st.code(f"data:file;base64,{base64.b64encode(fl['file_blob']).decode()[:15]}...")
-                        c3.download_button("📥", fl['file_blob'], fl['file_name'], key=f"dw_{fl['id']}")
+                        # چیدمان اصلاح شده: نام فایل و آیکون‌ها در یک سطر تراز شده
+                        c_name, c_btns = st.columns([4, 1.2])
+                        with c_name:
+                            st.write(f"📄 {fl['file_name']}")
+                        with c_btns:
+                            a1, a2, a3 = st.columns([1, 1, 1])
+                            if a1.button("🗑️", key=f"del_{fl['id']}", help="حذف"):
+                                c.execute("DELETE FROM project_files WHERE id=?", (int(fl['id']),)); conn.commit(); st.rerun()
+                            if a2.button("🔗", key=f"lnk_{fl['id']}", help="کپی لینک"):
+                                st.toast("لینک کپی شد"); st.code(f"data:file;base64,{base64.b64encode(fl['file_blob']).decode()[:10]}...")
+                            a3.download_button("📥", fl['file_blob'], fl['file_name'], key=f"dw_{fl['id']}", help="دانلود")
 
 with tabs[0]: render_dash("نظارتی 🛡️")
 with tabs[1]: render_dash("شخصی 👷")
@@ -117,7 +126,7 @@ with tabs[2]:
                     c.execute("INSERT INTO project_files (proj_id,folder_id,file_name,file_blob) VALUES (?,?,?,?)", (int(p_id), int(f_id), up_file.name, up_file.read()))
                     conn.commit(); st.success("انجام شد")
 
-# --- تنظیمات سیستم (کامل و اصلاح شده) ---
+# --- تنظیمات سیستم ---
 with tabs[3]:
     st.subheader("⚙️ تنظیمات سیستم")
     m_sec = st.radio("بخش تنظیمات:", ["نظارتی 🛡️", "شخصی 👷"], horizontal=True, key="m_setting")
@@ -157,10 +166,4 @@ with tabs[3]:
                 v_id = v_list[v_list['name']==sv]['id'].values[0]
                 c.execute("INSERT INTO projects (loc_id,name,company,contract_no,p_type) VALUES (?,?,?,?,?)",(int(v_id),pn,cp,cn,m_sec)); conn.commit(); st.rerun()
         st.divider()
-        all_projs = pd.read_sql("SELECT * FROM projects WHERE p_type=?", conn, params=(m_sec,))
-        if not all_projs.empty:
-            spj = st.selectbox("پروژه برای پوشه:", all_projs['name'].tolist(), key="set_fld_pj")
-            nf = st.text_input("نام پوشه جدید:")
-            if st.button("ایجاد پوشه"):
-                pid = all_projs[all_projs['name']==spj]['id'].values[0]
-                c.execute("INSERT INTO project_folders (proj_id,name,p_type) VALUES (?,?,?)",(int(pid),nf,m_sec)); conn.commit(); st.rerun()
+        all_projs =

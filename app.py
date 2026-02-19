@@ -21,25 +21,47 @@ conn.commit()
 
 st.set_page_config(page_title="مدیریت مهندسی شریفی", layout="wide")
 
-# ۲. استایل ویندوز ۱۱
+# ۲. استایل ویندوز ۱۱ و اجبار به راست‌چین ماندن تمام عناوین
 st.markdown("""
     <style>
-    [data-testid="stAppViewContainer"], .main { 
-        direction: rtl; 
-        text-align: right; 
+    /* تنظیم کل صفحه به راست‌چین */
+    [data-testid="stAppViewContainer"], .main, .block-container { 
+        direction: rtl !important; 
+        text-align: right !important; 
         font-family: 'Segoe UI', Tahoma, sans-serif;
     }
+    
+    /* اجبار عناوین و برچسب‌های ورودی به سمت راست */
+    h1, h2, h3, h4, h5, h6, label, .stMarkdown, p, span {
+        text-align: right !important;
+        direction: rtl !important;
+    }
+
+    /* تنظیم تب‌ها */
     .stTabs [data-baseweb="tab-list"] {
-        direction: rtl;
-        display: flex;
+        direction: rtl !important;
+        display: flex !important;
         justify-content: flex-start !important;
         gap: 10px;
     }
+
+    /* استایل دکمه‌ها و آیکون‌ها */
     div[data-testid="column"] button {
         border-radius: 6px !important;
         transition: all 0.2s ease;
     }
-    div[data-testid="column"] { display: flex; align-items: center; }
+    
+    div[data-testid="column"] { 
+        display: flex !important; 
+        align-items: center !important; 
+        justify-content: flex-start !important;
+    }
+
+    /* اصلاح تراز فیلدها */
+    div[data-baseweb="select"] > div {
+        text-align: right !important;
+        direction: rtl !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -112,14 +134,11 @@ with tabs[3]:
     st.subheader("⚙️ تنظیمات سیستم")
     m_sec = st.radio("بخش تنظیمات:", ["نظارتی 🛡️", "شخصی 👷"], horizontal=True, key="m_setting")
     st.divider()
-    
     cl, cr = st.columns(2)
-    
     with cl:
         st.subheader("📍 مدیریت محل پروژه")
         mode_loc = st.radio("عملیات محل:", ["افزودن جدید", "ویرایش نام موجود"], horizontal=True)
         ps = pd.read_sql("SELECT * FROM locations WHERE level='استان' AND p_type=?", conn, params=(m_sec,))
-        
         if mode_loc == "افزودن جدید":
             s_p = st.selectbox("استان:", ["--- جدید ---"] + ps['name'].tolist(), key="add_p")
             if s_p == "--- جدید ---":
@@ -150,15 +169,12 @@ with tabs[3]:
                 if st.button("اعمال تغییر نام محل"):
                     c.execute("UPDATE locations SET name=? WHERE name=? AND p_type=?", (new_loc_name, target_loc, m_sec))
                     conn.commit(); st.success("نام محل ویرایش شد"); st.rerun()
-
     with cr:
         st.subheader("🏗️ مدیریت پروژه و پوشه")
         mode_proj = st.radio("عملیات:", ["افزودن/پوشه جدید", "ویرایش اطلاعات پروژه", "ویرایش نام پوشه"], horizontal=True)
-        
         all_p_list = pd.read_sql("SELECT * FROM projects WHERE p_type=?", conn, params=(m_sec,))
         if not all_p_list.empty:
             all_p_list['display_name'] = all_p_list.apply(lambda x: f"قرارداد: {x['contract_no']} - پروژه: {x['name']}", axis=1)
-
         if mode_proj == "افزودن/پوشه جدید":
             v_list = pd.read_sql("SELECT * FROM locations WHERE level='شهر یا روستا' AND p_type=?", conn, params=(m_sec,))
             if not v_list.empty:
@@ -167,7 +183,6 @@ with tabs[3]:
                 if st.button("ثبت پروژه جدید"):
                     v_id = v_list[v_list['name']==sv]['id'].values[0]
                     c.execute("INSERT INTO projects (loc_id,name,company,contract_no,p_type) VALUES (?,?,?,?,?)",(int(v_id),pn,cp,cn,m_sec)); conn.commit(); st.rerun()
-            
             st.divider()
             if not all_p_list.empty:
                 st.write("**ایجاد پوشه برای پروژه:**")
@@ -176,27 +191,22 @@ with tabs[3]:
                 if st.button("ایجاد پوشه"):
                     pid = all_p_list[all_p_list['display_name']==spj_display]['id'].values[0]
                     c.execute("INSERT INTO project_folders (proj_id,name,p_type) VALUES (?,?,?)",(int(pid),nf,m_sec)); conn.commit(); st.rerun()
-        
         elif mode_proj == "ویرایش اطلاعات پروژه":
             if not all_p_list.empty:
                 edit_p = st.selectbox("انتخاب پروژه جهت ویرایش:", all_p_list['display_name'].tolist())
                 p_id = all_p_list[all_p_list['display_name']==edit_p]['id'].values[0]
                 p_data = all_p_list[all_p_list['id']==p_id].iloc[0]
-                
                 new_pn = st.text_input("اصلاح نام پروژه:", value=p_data['name'])
                 new_cp = st.text_input("اصلاح شرکت:", value=p_data['company'])
                 new_cn = st.text_input("اصلاح شماره قرارداد:", value=p_data['contract_no'])
                 if st.button("بروزرسانی اطلاعات پروژه"):
-                    c.execute("UPDATE projects SET name=?, company=?, contract_no=? WHERE id=?", 
-                              (new_pn, new_cp, new_cn, int(p_id)))
+                    c.execute("UPDATE projects SET name=?, company=?, contract_no=? WHERE id=?", (new_pn, new_cp, new_cn, int(p_id)))
                     conn.commit(); st.success("اطلاعات پروژه بروز شد"); st.rerun()
-
         else: # ویرایش نام پوشه
             if not all_p_list.empty:
                 st.write("**ویرایش نام پوشه‌های پروژه:**")
                 target_p_display = st.selectbox("انتخاب پروژه:", all_p_list['display_name'].tolist(), key="edit_fld_pj")
                 pid = all_p_list[all_p_list['display_name']==target_p_display]['id'].values[0]
-                
                 flds = pd.read_sql("SELECT * FROM project_folders WHERE proj_id=?", conn, params=(int(pid),))
                 if not flds.empty:
                     target_fld = st.selectbox("انتخاب پوشه:", flds['name'].tolist())

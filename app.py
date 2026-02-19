@@ -116,12 +116,13 @@ with tabs[3]:
     
     with cl:
         st.subheader("📍 مدیریت محل پروژه")
-        mode_loc = st.radio("عملیات محل:", ["افزودن جدید", "ویرایش نام موجود"], horizontal=True)
-        ps = pd.read_sql("SELECT * FROM locations WHERE level='استان' AND p_type=?", conn, params=(m_sec,))
-        if mode_loc == "افزودن جدید":
+        mode_loc = st.radio("عملیات محل:", ["افزودن محل پروژه", "ویرایش محل پروژه"], horizontal=True)
+        
+        if mode_loc == "افزودن محل پروژه":
+            ps = pd.read_sql("SELECT * FROM locations WHERE level='استان' AND p_type=?", conn, params=(m_sec,))
             s_p = st.selectbox("استان:", ["--- جدید ---"] + ps['name'].tolist(), key="add_p")
             if s_p == "--- جدید ---":
-                np = st.text_input("نام استان جدید:"); 
+                np = st.text_input("نام استان جدید:")
                 if st.button("ثبت استان"):
                     c.execute("INSERT INTO locations (name,level,p_type,parent_id) VALUES (?,?,?,0)", (np,"استان",m_sec)); conn.commit(); st.rerun()
             else:
@@ -129,7 +130,7 @@ with tabs[3]:
                 cs = pd.read_sql("SELECT * FROM locations WHERE level='شهرستان' AND parent_id=?", conn, params=(int(p_id),))
                 s_c = st.selectbox("شهرستان:", ["--- جدید ---"] + cs['name'].tolist(), key="add_c")
                 if s_c == "--- جدید ---":
-                    nc = st.text_input("نام شهرستان:"); 
+                    nc = st.text_input("نام شهرستان:")
                     if st.button("ثبت شهرستان"):
                         c.execute("INSERT INTO locations (name,level,p_type,parent_id) VALUES (?,?,?,?)",(nc,"شهرستان",m_sec,int(p_id))); conn.commit(); st.rerun()
                 else:
@@ -140,14 +141,19 @@ with tabs[3]:
                         nv = st.text_input("نام محل:"); t = st.selectbox("نوع:",["شهر","روستا"])
                         if st.button("ثبت محل"):
                             c.execute("INSERT INTO locations (name,level,p_type,parent_id) VALUES (?,?,?,?)",(f"{t} {nv}","شهر یا روستا",m_sec,int(c_id))); conn.commit(); st.rerun()
-        else:
-            all_locs = pd.read_sql("SELECT * FROM locations WHERE p_type=?", conn, params=(m_sec,))
+        
+        else: # ویرایش محل پروژه (بهبود یافته طبق نظر کاربر)
+            level_to_edit = st.selectbox("قصد ویرایش کدام سطح را دارید؟", ["استان", "شهرستان", "شهر یا روستا"])
+            all_locs = pd.read_sql("SELECT * FROM locations WHERE level=? AND p_type=?", conn, params=(level_to_edit, m_sec))
+            
             if not all_locs.empty:
-                target_loc = st.selectbox("انتخاب مورد برای ویرایش:", all_locs['name'].tolist())
+                target_loc = st.selectbox(f"انتخاب {level_to_edit} برای ویرایش:", all_locs['name'].tolist())
                 new_loc_name = st.text_input("نام جدید:", value=target_loc)
                 if st.button("اعمال تغییر نام محل"):
-                    c.execute("UPDATE locations SET name=? WHERE name=? AND p_type=?", (new_loc_name, target_loc, m_sec))
+                    c.execute("UPDATE locations SET name=? WHERE name=? AND level=? AND p_type=?", (new_loc_name, target_loc, level_to_edit, m_sec))
                     conn.commit(); st.success("نام محل ویرایش شد"); st.rerun()
+            else:
+                st.info(f"هنوز هیچ اطلاعاتی در سطح '{level_to_edit}' ثبت نشده است.")
 
     with cr:
         st.subheader("🏗️ مدیریت پروژه")
@@ -158,7 +164,6 @@ with tabs[3]:
             all_p_list['display_name'] = all_p_list.apply(lambda x: f"قرارداد: {x['contract_no']} - پروژه: {x['name']}", axis=1)
 
         if mode_proj == "افزودن پروژه":
-            # عنوان حذف شد برای زیبایی بیشتر طبق درخواست شما
             v_list = pd.read_sql("SELECT * FROM locations WHERE level='شهر یا روستا' AND p_type=?", conn, params=(m_sec,))
             if not v_list.empty:
                 sv = st.selectbox("انتخاب محل پروژه:", v_list['name'].tolist(), key="set_pj_loc")

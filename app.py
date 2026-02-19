@@ -1,15 +1,14 @@
 import streamlit as st
 import pandas as pd
 import sqlite3
-import time
 import base64
 
-# ۱. اتصال به دیتابیس (داده‌های شما محفوظ است)
+# ۱. اتصال به دیتابیس
 DB_NAME = 'civil_pro_final_v26.db'
 conn = sqlite3.connect(DB_NAME, check_same_thread=False)
 c = conn.cursor()
 
-# ایجاد جداول (بدون دیتای پیش‌فرض)
+# ایجاد جداول
 c.execute('CREATE TABLE IF NOT EXISTS locations (id INTEGER PRIMARY KEY, name TEXT, level TEXT, p_type TEXT, parent_id INTEGER)')
 c.execute('CREATE TABLE IF NOT EXISTS projects (id INTEGER PRIMARY KEY, loc_id INTEGER, name TEXT, company TEXT, contract_no TEXT, p_type TEXT)')
 c.execute('CREATE TABLE IF NOT EXISTS project_folders (id INTEGER PRIMARY KEY, proj_id INTEGER, name TEXT, p_type TEXT)')
@@ -18,22 +17,30 @@ conn.commit()
 
 st.set_page_config(page_title="مدیریت مهندسی شریفی", layout="wide")
 
-# استایل استاندارد و ایمن نسخه ۲۶
+# استایل نسخه ۲۶ + حذف امن کادر دکمه‌های آیکونی
 st.markdown("""
     <style>
     .main, .stTabs, .stSelectbox, .stTextInput, .stButton, .stMarkdown, p, h1, h2, h3 { 
         direction: rtl; 
         text-align: right; 
     }
+    /* حذف کادر دور تمام دکمه‌ها برای اینکه آیکون‌ها بدون مربع دیده شوند */
+    button {
+        border: none !important;
+        background: transparent !important;
+        box-shadow: none !important;
+    }
+    /* جلوگیری از به هم ریختن تب‌ها */
+    .stTabs [data-baseweb="tab-list"] {
+        direction: rtl;
+    }
     </style>
     """, unsafe_allow_html=True)
 
 tabs = st.tabs(["🛡️ داشبورد نظارتی", "👷 داشبورد شخصی", "📤 آپلود فایل", "📍 تنظیمات سیستم"])
 
-# --- تابع داشبورد نسخه ۲۶ ---
 def render_dash(label):
     col_tree, col_view = st.columns([1, 2.5])
-    
     with col_tree:
         st.subheader(f"آرشیو {label}")
         provs = pd.read_sql(f"SELECT * FROM locations WHERE level='استان' AND p_type='{label}'", conn)
@@ -55,7 +62,6 @@ def render_dash(label):
             pj = st.session_state[f'act_{label}']
             st.header(f"پروژه: {pj['name']}")
             st.info(f"🏢 شرکت: {pj['company']} | 📄 قرارداد: {pj['contract_no']}")
-            
             flds = pd.read_sql(f"SELECT * FROM project_folders WHERE proj_id={pj['id']}", conn)
             for _, fld in flds.iterrows():
                 with st.expander(f"📁 {fld['name']}", expanded=True):
@@ -71,13 +77,13 @@ def render_dash(label):
                                 conn.commit(); st.rerun()
                             if a2.button("🔗", key=f"lnk_{fl['id']}"):
                                 b64 = base64.b64encode(fl['file_blob']).decode()
-                                st.code(f"data:file;base64,{b64[:15]}...")
+                                st.toast("لینک موقت ایجاد شد")
+                                st.code(f"data:file;base64,{b64[:10]}...")
                             a3.download_button("📥", fl['file_blob'], fl['file_name'], key=f"dw_{fl['id']}")
 
 with tabs[0]: render_dash("نظارتی 🛡️")
 with tabs[1]: render_dash("شخصی 👷")
 
-# --- آپلود فایل ---
 with tabs[2]:
     st.subheader("📤 آپلود مدارک")
     u_sec = st.radio("بخش:", ["نظارتی 🛡️", "شخصی 👷"], horizontal=True)
@@ -93,11 +99,9 @@ with tabs[2]:
                 f_id = fs[fs['name']==s_f]['id'].values[0]
                 up_file = st.file_uploader("انتخاب فایل")
                 if st.button("ثبت فایل") and up_file:
-                    c.execute("INSERT INTO project_files (proj_id,folder_id,file_name,file_blob) VALUES (?,?,?,?)",
-                              (int(p_id), int(f_id), up_file.name, up_file.read()))
+                    c.execute("INSERT INTO project_files (proj_id,folder_id,file_name,file_blob) VALUES (?,?,?,?)", (int(p_id), int(f_id), up_file.name, up_file.read()))
                     conn.commit(); st.success("انجام شد")
 
-# --- تنظیمات سیستم (دقیقا مشابه نسخه ۲۶) ---
 with tabs[3]:
     st.subheader("⚙️ تنظیمات سیستم")
     m_sec = st.radio("بخش تنظیمات:", ["نظارتی 🛡️", "شخصی 👷"], horizontal=True, key="m_setting")

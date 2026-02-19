@@ -118,4 +118,12 @@ with tabs[2]:
                     # ۱. ذخیره در حافظه داخلی
                     p_name = s_p.split(" - ")[1].replace(" ","_")
                     path = os.path.join(BASE_DIR, p_name)
-                    if not os.path.exists
+                    if not os.path.exists(path): os.makedirs(path)
+                    f_path = os.path.join(path, up.name)
+                    with open(f_path, "wb") as f: f.write(up.getbuffer())
+                    
+                    # ۲. ذخیره در دیتابیس
+                    c.execute("INSERT INTO project_files (proj_id, folder_id, file_name, file_path, file_blob) VALUES (?,?,?,?,?)",
+                              (int(p_id), int(f_id), up.name, f_path, up.getvalue()))
+                    conn.commit()
+                    st.success("فایل با موفقیت ثبت شد و دکمه باز کردن فعال گردید."); st.rerun()
